@@ -70,16 +70,20 @@ async function registerDevice() {
 function shareFiles() {
   const fileInput = document.getElementById('fileInput');
   const folderInput = document.getElementById('folderInput');
-  const files = Array.from(fileInput.files).concat(Array.from(folderInput.files || [])); // Combine both inputs
+  const files = Array.from(fileInput.files).concat(Array.from(folderInput.files || []));
+  console.log('Selected files:', files); // Debug log
   files.forEach(file => sharedFilesMap.set(file.name, file));
   const fileMetadata = files.map(file => ({
     name: file.name,
     size: file.size,
     timestamp: Date.now()
   }));
+  console.log('File metadata to send:', fileMetadata); // Debug log
   if (files.length > 0) {
     ws.send(JSON.stringify({ type: 'share', files: fileMetadata }));
     document.getElementById('status').textContent = 'Files shared!';
+  } else {
+    console.log('No files selected to share');
   }
 }
 
