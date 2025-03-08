@@ -1,3 +1,4 @@
+console.log('client.js loaded successfully');
 let ws;
 let peerConnection;
 let dataChannel;
