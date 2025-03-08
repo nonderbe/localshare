@@ -96,6 +96,25 @@ input[type="file"] {
   background: linear-gradient(90deg, #2980b9, #1f618d);
 }
 
+.btn-stop {
+  background: linear-gradient(90deg, #e74c3c, #c0392b);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.3s;
+  margin-left: 10px; /* Space it from the Share button */
+}
+
+.btn-stop:hover {
+  background: linear-gradient(90deg, #c0392b, #992d22);
+}
+
 #fileList {
   list-style: none;
   padding: 0;

@@ -3,15 +3,12 @@ let peerConnection;
 let dataChannel;
 let myId;
 let targetId;
-let sharedFilesMap = new Map(); // Persist shared files in memory
+let sharedFilesMap = new Map();
 
-// Derive WebSocket URL dynamically
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const hostname = window.location.hostname;
-const defaultPath = window.WEBSOCKET_PATH || '/ws'; // Use override or default
-const serverUrl = window.WEBSOCKET_URL || `${protocol}//${hostname}${defaultPath}`;
+const serverUrl = `${protocol}//${hostname}`;
 
-// Get local IP using WebRTC with timeout
 async function getLocalIP() {
   return new Promise((resolve) => {
     const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
@@ -27,7 +24,6 @@ async function getLocalIP() {
     };
 
     pc.createOffer().then(offer => pc.setLocalDescription(offer));
-
     setTimeout(() => {
       if (!localIP) {
         pc.close();
@@ -37,7 +33,6 @@ async function getLocalIP() {
   });
 }
 
-// Register device automatically on load
 async function registerDevice() {
   document.getElementById('deviceCount').textContent = 'Connecting...';
 
@@ -47,13 +42,13 @@ async function registerDevice() {
     return;
   }
 
-  console.log(`Attempting to connect to WebSocket at: ${serverUrl}`); // Debug log
+  console.log(`Attempting to connect to WebSocket at: ${serverUrl}`);
   ws = new WebSocket(serverUrl);
 
   ws.onopen = () => {
     console.log('WebSocket connected successfully');
     ws.send(JSON.stringify({ type: 'register', ip }));
-    updateDeviceCount(1); // Show 1 device immediately
+    updateDeviceCount(1);
     checkFolderSupport();
   };
 
@@ -72,7 +67,6 @@ async function registerDevice() {
   ws.onmessage = handleMessage;
 }
 
-// Check for folder support and show fallback if needed
 function checkFolderSupport() {
   const input = document.getElementById('shareInput');
   if (!('webkitdirectory' in input)) {
@@ -80,10 +74,8 @@ function checkFolderSupport() {
   }
 }
 
-// Handle WebSocket messages
 function handleMessage(event) {
   const data = JSON.parse(event.data);
-  console.log('Received message:', data); // Debug log
 
   if (data.type === 'update') {
     updateDeviceCount(data.deviceCount);
@@ -93,13 +85,11 @@ function handleMessage(event) {
   }
 }
 
-// Update device count UI
 function updateDeviceCount(count) {
   document.getElementById('deviceCount').textContent = 
     `${count} device${count === 1 ? '' : 's'} connected`;
 }
 
-// Update shared file list UI
 function updateFileList(files) {
   const list = document.getElementById('fileList');
   list.innerHTML = '';
@@ -117,20 +107,25 @@ function updateFileList(files) {
   });
 }
 
-// Share selected files/folders
 function shareFiles() {
   const shareInput = document.getElementById('shareInput');
   const files = Array.from(shareInput.files);
-  files.forEach(file => sharedFilesMap.set(file.name, file)); // Persist files
+  files.forEach(file => sharedFilesMap.set(file.name, file));
   const fileMetadata = files.map(file => ({
     name: file.name,
     size: file.size,
+    timestamp: Date.now() // Add timestamp for expiration
   }));
   ws.send(JSON.stringify({ type: 'share', files: fileMetadata }));
   document.getElementById('status').textContent = 'Files shared!';
 }
 
-// Request a file from another device
+function stopSharing() {
+  sharedFilesMap.clear();
+  ws.send(JSON.stringify({ type: 'stopSharing' }));
+  document.getElementById('status').textContent = 'File sharing stopped.';
+}
+
 function requestFile(ownerId, fileName) {
   targetId = ownerId;
   setupWebRTC(() => {
@@ -138,7 +133,6 @@ function requestFile(ownerId, fileName) {
   });
 }
 
-// Setup WebRTC connection
 function setupWebRTC(onOpenCallback) {
   peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
   dataChannel = peerConnection.createDataChannel('fileTransfer');
@@ -170,7 +164,6 @@ function setupWebRTC(onOpenCallback) {
     });
 }
 
-// Handle incoming WebRTC signaling
 async function handleSignal(data) {
   if (!peerConnection) {
     peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
@@ -195,7 +188,6 @@ async function handleSignal(data) {
   }
 }
 
-// Handle data channel messages with progress
 function handleDataChannelMessage(e) {
   const message = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
   if (message.type === 'request') {
@@ -208,9 +200,8 @@ function handleDataChannelMessage(e) {
   }
 }
 
-// Send file with progress bar
 function sendFileWithProgress(file) {
-  const chunkSize = 16384; // 16KB chunks
+  const chunkSize = 16384;
   file.arrayBuffer().then(buffer => {
     const totalSize = buffer.byteLength;
     let offset = 0;
@@ -227,7 +218,7 @@ function sendFileWithProgress(file) {
         offset += chunkSize;
         const progress = (offset / totalSize) * 100;
         progressFill.style.width = `${progress}%`;
-        setTimeout(sendNextChunk, 10); // Small delay to avoid overwhelming the channel
+        setTimeout(sendNextChunk, 10);
       } else {
         progressBar.style.display = 'none';
         document.getElementById('status').textContent = `Sent ${file.name}`;
@@ -237,7 +228,6 @@ function sendFileWithProgress(file) {
   });
 }
 
-// Receive file with progress bar
 function receiveFileWithProgress(data) {
   const blob = new Blob([data]);
   const url = URL.createObjectURL(blob);
@@ -249,5 +239,4 @@ function receiveFileWithProgress(data) {
   document.getElementById('progress').style.display = 'none';
 }
 
-// Auto-register on page load
 window.onload = registerDevice;

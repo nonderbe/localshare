@@ -11,11 +11,13 @@
   <div class="container">
     <h1><i class="fas fa-share-alt"></i> FileShare</h1>
     
+    <!-- Device Discovery -->
     <section class="card">
       <h2><i class="fas fa-network-wired"></i> Device Discovery</h2>
       <p id="deviceCount">Connecting...</p>
     </section>
 
+    <!-- File Sharing -->
     <section class="card">
       <h2><i class="fas fa-file-upload"></i> File Sharing</h2>
       <div class="share-area">
@@ -25,6 +27,7 @@
           <i class="fas fa-exclamation-circle"></i> Folder sharing not supported in your browser. Select multiple files instead.
         </p>
         <button onclick="shareFiles()" class="btn-share"><i class="fas fa-arrow-up"></i> Share</button>
+        <button onclick="stopSharing()" class="btn-stop"><i class="fas fa-stop"></i> Stop Sharing</button>
       </div>
       <h3><i class="fas fa-folder-open"></i> Available Files</h3>
       <ul id="fileList"></ul>
@@ -35,13 +38,6 @@
       <div id="progressFill" class="progress-fill"></div>
     </div>
   </div>
-
-  <!-- Configurable WebSocket path -->
-  <script>
-    // Optional: Override the WebSocket path or full URL
-    window.WEBSOCKET_PATH = '/localshare/public/ws'; // Default path
-    // For a custom full URL, use: window.WEBSOCKET_URL = 'wss://custom.domain.com/ws';
-  </script>
   <script src="client.js"></script>
 </body>
 </html>

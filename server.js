@@ -1,20 +1,27 @@
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(express.static(path.join(__dirname, 'public')));
+const publicPath = path.join(__dirname, 'public');
+if (!fs.existsSync(publicPath)) {
+  console.error(`Error: Public directory not found at ${publicPath}`);
+  process.exit(1);
+}
+
+app.use(express.static(publicPath));
 
 const server = app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
+  console.log(`Server running on port ${port}`);
 });
 
-// WebSocket server with path
-const wss = new WebSocketServer({ server, path: '/localshare/public/ws' }); // Match client path
+const wss = new WebSocketServer({ server });
 
 const clients = new Map();
+const EXPIRATION_TIME = 72 * 60 * 60 * 1000; // 72 hours in milliseconds
 
 wss.on('connection', (ws) => {
   const clientId = Math.random().toString(36).substring(2, 15);
@@ -28,7 +35,11 @@ wss.on('connection', (ws) => {
       broadcastUpdate(subnet);
     } else if (data.type === 'share') {
       const clientInfo = clients.get(ws);
-      clientInfo.sharedFiles = data.files;
+      clientInfo.sharedFiles = data.files; // Files now include timestamps
+      broadcastUpdate(clientInfo.subnet);
+    } else if (data.type === 'stopSharing') {
+      const clientInfo = clients.get(ws);
+      clientInfo.sharedFiles = []; // Clear shared files
       broadcastUpdate(clientInfo.subnet);
     } else if (data.type === 'signal') {
       const targetClient = [...clients.entries()].find(
@@ -55,7 +66,17 @@ wss.on('connection', (ws) => {
 });
 
 function broadcastUpdate(subnet) {
+  const now = Date.now();
   const devices = [...clients.values()].filter(client => client.subnet === subnet);
+
+  // Filter out expired files
+  devices.forEach(client => {
+    client.sharedFiles = client.sharedFiles.filter(file => {
+      const age = now - file.timestamp;
+      return age < EXPIRATION_TIME; // Keep files younger than 72 hours
+    });
+  });
+
   const deviceCount = devices.length;
   const sharedFiles = devices.flatMap(client => client.sharedFiles.map(file => ({
     name: file.name,
