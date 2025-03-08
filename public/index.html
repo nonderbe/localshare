@@ -11,18 +11,18 @@
   <div class="container">
     <h1><i class="fas fa-share-alt"></i> FileShare</h1>
     
-    <!-- Device Discovery -->
     <section class="card">
       <h2><i class="fas fa-network-wired"></i> Device Discovery</h2>
       <p id="deviceCount">Connecting...</p>
     </section>
 
-    <!-- File Sharing -->
     <section class="card">
       <h2><i class="fas fa-file-upload"></i> File Sharing</h2>
       <div class="share-area">
-        <label>Share files or folders:</label>
-        <input type="file" id="shareInput" multiple webkitdirectory>
+        <label>Share individual files:</label>
+        <input type="file" id="fileInput" multiple>
+        <label>Share folders:</label>
+        <input type="file" id="folderInput" webkitdirectory>
         <p id="fallbackMessage" class="fallback" style="display: none;">
           <i class="fas fa-exclamation-circle"></i> Folder sharing not supported in your browser. Select multiple files instead.
         </p>

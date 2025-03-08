@@ -67,10 +67,27 @@ async function registerDevice() {
   ws.onmessage = handleMessage;
 }
 
+function shareFiles() {
+  const fileInput = document.getElementById('fileInput');
+  const folderInput = document.getElementById('folderInput');
+  const files = Array.from(fileInput.files).concat(Array.from(folderInput.files || [])); // Combine both inputs
+  files.forEach(file => sharedFilesMap.set(file.name, file));
+  const fileMetadata = files.map(file => ({
+    name: file.name,
+    size: file.size,
+    timestamp: Date.now()
+  }));
+  if (files.length > 0) {
+    ws.send(JSON.stringify({ type: 'share', files: fileMetadata }));
+    document.getElementById('status').textContent = 'Files shared!';
+  }
+}
+
 function checkFolderSupport() {
-  const input = document.getElementById('shareInput');
-  if (!('webkitdirectory' in input)) {
+  const folderInput = document.getElementById('folderInput');
+  if (!('webkitdirectory' in folderInput)) {
     document.getElementById('fallbackMessage').style.display = 'block';
+    folderInput.style.display = 'none'; // Hide folder input if unsupported
   }
 }
 

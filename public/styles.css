@@ -176,4 +176,13 @@ input[type="file"] {
   background: linear-gradient(90deg, #3498db, #2980b9);
   width: 0;
   transition: width 0.3s ease;
+  
+.share-area label {
+  display: block;
+  margin-top: 10px;
+}
+.share-area input {
+  margin-bottom: 10px;
+}
+  
 }
