@@ -140,7 +140,8 @@ function setupWebRTC(onOpenCallback) {
     peerConnection = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' }
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
       ]
     });
     console.log('RTCPeerConnection created');
@@ -185,6 +186,9 @@ function setupWebRTC(onOpenCallback) {
   peerConnection.onsignalingstatechange = () => {
     console.log('Signaling state:', peerConnection.signalingState);
   };
+  peerConnection.onicecandidateerror = (e) => {
+    console.error('ICE candidate error:', e.errorText, 'URL:', e.url);
+  };
 
   console.log('Creating offer');
   peerConnection.createOffer()
@@ -212,7 +216,8 @@ function handleSignal(data) {
     peerConnection = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' }
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
       ]
     });
     peerConnection.ondatachannel = (e) => {
@@ -239,6 +244,12 @@ function handleSignal(data) {
     };
     peerConnection.onconnectionstatechange = () => {
       console.log('Connection state (responder):', peerConnection.connectionState);
+    };
+    peerConnection.oniceconnectionstatechange = () => {
+      console.log('ICE connection state (responder):', peerConnection.iceConnectionState);
+    };
+    peerConnection.onicecandidateerror = (e) => {
+      console.error('ICE candidate error (responder):', e.errorText, 'URL:', e.url);
     };
   }
 
