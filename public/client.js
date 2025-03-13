@@ -19,7 +19,7 @@ async function registerDevice() {
 
   ws.onopen = () => {
     console.log('WebSocket connected successfully');
-    ws.send(JSON.stringify({ type: 'register' })); // Geen IP meer nodig
+    ws.send(JSON.stringify({ type: 'register' }));
     updateDeviceCount(1);
     checkFolderSupport();
   };
@@ -115,13 +115,10 @@ function shareFiles() {
   }
 }
 
-function requestFile(ownerId, fileName) {
-  console.log('requestFile called - ownerId:', ownerId, 'fileName:', fileName);
-  targetId = ownerId;
-  setupWebRTC(() => {
-    console.log('DataChannel opened, sending request for:', fileName);
-    dataChannel.send(JSON.stringify({ type: 'request', fileName }));
-  });
+function stopSharing() {
+  sharedFilesMap.clear();
+  ws.send(JSON.stringify({ type: 'stopSharing' }));
+  document.getElementById('status').textContent = 'File sharing stopped.';
 }
 
 function requestFile(ownerId, fileName) {
@@ -140,7 +137,13 @@ function requestFile(ownerId, fileName) {
 function setupWebRTC(onOpenCallback) {
   console.log('Setting up WebRTC connection');
   try {
-    peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    peerConnection = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        // Optioneel: voeg een TURN-server toe als STUN faalt (vereist eigen server)
+        // { urls: 'turn:your-turn-server.com:3478', username: 'user', credential: 'pass' }
+      ]
+    });
     console.log('RTCPeerConnection created');
   } catch (error) {
     console.error('Error creating RTCPeerConnection:', error);
@@ -180,6 +183,9 @@ function setupWebRTC(onOpenCallback) {
   peerConnection.oniceconnectionstatechange = () => {
     console.log('ICE connection state:', peerConnection.iceConnectionState);
   };
+  peerConnection.onsignalingstatechange = () => {
+    console.log('Signaling state:', peerConnection.signalingState);
+  };
 
   console.log('Creating offer');
   peerConnection.createOffer()
@@ -204,7 +210,12 @@ function handleSignal(data) {
   console.log('Received signal from:', data.fromId, 'for target:', data.targetId);
   if (!peerConnection) {
     console.log('Creating new RTCPeerConnection for incoming signal');
-    peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    peerConnection = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        // Optioneel: TURN-server hier toevoegen
+      ]
+    });
     peerConnection.ondatachannel = (e) => {
       dataChannel = e.channel;
       dataChannel.onopen = () => {
@@ -213,14 +224,36 @@ function handleSignal(data) {
       };
       dataChannel.onmessage = handleDataChannelMessage;
       dataChannel.onerror = (error) => console.error('Incoming DataChannel error:', error);
+      dataChannel.onclose = () => console.log('Incoming DataChannel closed');
+    };
+    peerConnection.onicecandidate = (e) => {
+      if (e.candidate) {
+        console.log('ICE candidate found (responder):', e.candidate.candidate);
+        ws.send(JSON.stringify({
+          type: 'signal',
+          targetId: data.fromId,
+          signal: { candidate: e.candidate },
+        }));
+      } else {
+        console.log('ICE candidate gathering complete (responder)');
+      }
+    };
+    peerConnection.onconnectionstatechange = () => {
+      console.log('Connection state (responder):', peerConnection.connectionState);
     };
   }
 
   if (data.signal.type === 'offer') {
     console.log('Handling offer');
     peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal))
-      .then(() => peerConnection.createAnswer())
-      .then(answer => peerConnection.setLocalDescription(answer))
+      .then(() => {
+        console.log('Remote description set');
+        return peerConnection.createAnswer();
+      })
+      .then(answer => {
+        console.log('Answer created');
+        return peerConnection.setLocalDescription(answer);
+      })
       .then(() => {
         console.log('Sending answer to:', data.fromId);
         ws.send(JSON.stringify({
@@ -231,10 +264,66 @@ function handleSignal(data) {
       })
       .catch(error => console.error('Error handling offer:', error));
   } else if (data.signal.candidate) {
-    console.log('Adding ICE candidate');
+    console.log('Adding ICE candidate:', data.signal.candidate);
     peerConnection.addIceCandidate(new RTCIceCandidate(data.signal.candidate))
       .catch(error => console.error('Error adding ICE candidate:', error));
   }
+}
+
+function handleDataChannelMessage(e) {
+  const message = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+  if (message.type === 'request') {
+    console.log('Received file request for:', message.fileName);
+    const file = sharedFilesMap.get(message.fileName);
+    if (file) {
+      sendFileWithProgress(file);
+    } else {
+      console.error('File not found in sharedFilesMap:', message.fileName);
+    }
+  } else {
+    receiveFileWithProgress(e.data);
+  }
+}
+
+function sendFileWithProgress(file) {
+  console.log('Sending file:', file.name);
+  const chunkSize = 16384;
+  file.arrayBuffer().then(buffer => {
+    const totalSize = buffer.byteLength;
+    let offset = 0;
+    const progressBar = document.getElementById('progress');
+    const progressFill = document.getElementById('progressFill');
+
+    progressBar.style.display = 'block';
+    document.getElementById('status').textContent = `Sending ${file.name}...`;
+
+    function sendNextChunk() {
+      if (offset < totalSize) {
+        const chunk = buffer.slice(offset, offset + chunkSize);
+        dataChannel.send(chunk);
+        offset += chunkSize;
+        const progress = (offset / totalSize) * 100;
+        progressFill.style.width = `${progress}%`;
+        setTimeout(sendNextChunk, 10);
+      } else {
+        progressBar.style.display = 'none';
+        document.getElementById('status').textContent = `Sent ${file.name}`;
+      }
+    }
+    sendNextChunk();
+  }).catch(error => console.error('Error reading file buffer:', error));
+}
+
+function receiveFileWithProgress(data) {
+  console.log('Receiving file data');
+  const blob = new Blob([data]);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = [...sharedFilesMap.keys()].find(name => name === (targetId && sharedFilesMap.get(name)?.name)) || 'downloaded_file';
+  a.click();
+  document.getElementById('status').textContent = 'File downloaded!';
+  document.getElementById('progress').style.display = 'none';
 }
 
 window.onload = registerDevice;
