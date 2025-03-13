@@ -124,9 +124,28 @@ function requestFile(ownerId, fileName) {
   });
 }
 
+function requestFile(ownerId, fileName) {
+  console.log('requestFile called - ownerId:', ownerId, 'fileName:', fileName);
+  targetId = ownerId;
+  setupWebRTC(() => {
+    console.log('DataChannel opened, sending request for:', fileName);
+    try {
+      dataChannel.send(JSON.stringify({ type: 'request', fileName }));
+    } catch (error) {
+      console.error('Error sending request:', error);
+    }
+  });
+}
+
 function setupWebRTC(onOpenCallback) {
   console.log('Setting up WebRTC connection');
-  peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  try {
+    peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    console.log('RTCPeerConnection created');
+  } catch (error) {
+    console.error('Error creating RTCPeerConnection:', error);
+    return;
+  }
   dataChannel = peerConnection.createDataChannel('fileTransfer');
 
   dataChannel.onopen = () => {
@@ -136,35 +155,49 @@ function setupWebRTC(onOpenCallback) {
   };
   dataChannel.onmessage = handleDataChannelMessage;
   dataChannel.onerror = (error) => console.error('DataChannel error:', error);
+  dataChannel.onclose = () => console.log('DataChannel closed');
 
   peerConnection.onicecandidate = (e) => {
     if (e.candidate) {
-      console.log('ICE candidate found:', e.candidate);
-      ws.send(JSON.stringify({
-        type: 'signal',
-        targetId,
-        signal: { candidate: e.candidate },
-      }));
+      console.log('ICE candidate found:', e.candidate.candidate);
+      try {
+        ws.send(JSON.stringify({
+          type: 'signal',
+          targetId,
+          signal: { candidate: e.candidate },
+        }));
+        console.log('ICE candidate sent to:', targetId);
+      } catch (error) {
+        console.error('Error sending ICE candidate:', error);
+      }
+    } else {
+      console.log('ICE candidate gathering complete');
     }
   };
   peerConnection.onconnectionstatechange = () => {
     console.log('Connection state:', peerConnection.connectionState);
   };
+  peerConnection.oniceconnectionstatechange = () => {
+    console.log('ICE connection state:', peerConnection.iceConnectionState);
+  };
 
+  console.log('Creating offer');
   peerConnection.createOffer()
     .then(offer => {
-      console.log('Offer created:', offer);
+      console.log('Offer created:', offer.sdp.substring(0, 100) + '...');
       return peerConnection.setLocalDescription(offer);
     })
     .then(() => {
-      console.log('Sending offer to target:', targetId);
+      console.log('Local description set, sending offer to target:', targetId);
       ws.send(JSON.stringify({
         type: 'signal',
         targetId,
         signal: peerConnection.localDescription,
       }));
     })
-    .catch(error => console.error('WebRTC setup error:', error));
+    .catch(error => {
+      console.error('WebRTC setup error:', error);
+    });
 }
 
 function handleSignal(data) {
