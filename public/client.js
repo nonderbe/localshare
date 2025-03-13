@@ -115,6 +115,93 @@ function shareFiles() {
   }
 }
 
-// ... (rest of the code unchanged: stopSharing, requestFile, setupWebRTC, etc.)
+function requestFile(ownerId, fileName) {
+  console.log('requestFile called - ownerId:', ownerId, 'fileName:', fileName);
+  targetId = ownerId;
+  setupWebRTC(() => {
+    console.log('DataChannel opened, sending request for:', fileName);
+    dataChannel.send(JSON.stringify({ type: 'request', fileName }));
+  });
+}
+
+function setupWebRTC(onOpenCallback) {
+  console.log('Setting up WebRTC connection');
+  peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  dataChannel = peerConnection.createDataChannel('fileTransfer');
+
+  dataChannel.onopen = () => {
+    console.log('DataChannel opened');
+    document.getElementById('status').textContent = 'Connection established!';
+    if (onOpenCallback) onOpenCallback();
+  };
+  dataChannel.onmessage = handleDataChannelMessage;
+  dataChannel.onerror = (error) => console.error('DataChannel error:', error);
+
+  peerConnection.onicecandidate = (e) => {
+    if (e.candidate) {
+      console.log('ICE candidate found:', e.candidate);
+      ws.send(JSON.stringify({
+        type: 'signal',
+        targetId,
+        signal: { candidate: e.candidate },
+      }));
+    }
+  };
+  peerConnection.onconnectionstatechange = () => {
+    console.log('Connection state:', peerConnection.connectionState);
+  };
+
+  peerConnection.createOffer()
+    .then(offer => {
+      console.log('Offer created:', offer);
+      return peerConnection.setLocalDescription(offer);
+    })
+    .then(() => {
+      console.log('Sending offer to target:', targetId);
+      ws.send(JSON.stringify({
+        type: 'signal',
+        targetId,
+        signal: peerConnection.localDescription,
+      }));
+    })
+    .catch(error => console.error('WebRTC setup error:', error));
+}
+
+function handleSignal(data) {
+  console.log('Received signal from:', data.fromId, 'for target:', data.targetId);
+  if (!peerConnection) {
+    console.log('Creating new RTCPeerConnection for incoming signal');
+    peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    peerConnection.ondatachannel = (e) => {
+      dataChannel = e.channel;
+      dataChannel.onopen = () => {
+        console.log('Incoming DataChannel opened');
+        document.getElementById('status').textContent = 'Connection established!';
+      };
+      dataChannel.onmessage = handleDataChannelMessage;
+      dataChannel.onerror = (error) => console.error('Incoming DataChannel error:', error);
+    };
+  }
+
+  if (data.signal.type === 'offer') {
+    console.log('Handling offer');
+    peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal))
+      .then(() => peerConnection.createAnswer())
+      .then(answer => peerConnection.setLocalDescription(answer))
+      .then(() => {
+        console.log('Sending answer to:', data.fromId);
+        ws.send(JSON.stringify({
+          type: 'signal',
+          targetId: data.fromId,
+          signal: peerConnection.localDescription,
+        }));
+      })
+      .catch(error => console.error('Error handling offer:', error));
+  } else if (data.signal.candidate) {
+    console.log('Adding ICE candidate');
+    peerConnection.addIceCandidate(new RTCIceCandidate(data.signal.candidate))
+      .catch(error => console.error('Error adding ICE candidate:', error));
+  }
+}
 
 window.onload = registerDevice;
