@@ -31,7 +31,9 @@ wss.on('connection', (ws) => {
 
     if (data.type === 'register') {
       const subnet = data.ip.split('.').slice(0, 3).join('.');
+      console.log('Client registered - IP:', data.ip, 'Subnet:', subnet);
       clients.set(ws, { id: clientId, ip: data.ip, subnet, sharedFiles: [] });
+      ws.send(JSON.stringify({ type: 'register', clientId }));
       broadcastUpdate(subnet);
     } else if (data.type === 'share') {
       const clientInfo = clients.get(ws);

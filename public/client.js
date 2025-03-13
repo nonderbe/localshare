@@ -39,6 +39,7 @@ async function registerDevice() {
   document.getElementById('deviceCount').textContent = 'Connecting...';
 
   const ip = await getLocalIP();
+  console.log('Local IP:', ip);
   if (!ip) {
     document.getElementById('deviceCount').textContent = 'Error: Could not detect local IP. Check network or refresh.';
     return;
