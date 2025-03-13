@@ -1,33 +1,5 @@
 console.log('client.js loaded successfully');
 
-function shareFiles() {
-  console.log('shareFiles() called'); // Moet verschijnen bij klikken
-  const fileInput = document.getElementById('fileInput');
-  const folderInput = document.getElementById('folderInput');
-  console.log('Raw fileInput.files:', fileInput.files);
-  console.log('Raw folderInput.files:', folderInput.files);
-  const files = Array.from(fileInput.files).concat(Array.from(folderInput.files || []));
-  console.log('Combined files:', files);
-  files.forEach(file => sharedFilesMap.set(file.name, file));
-  const fileMetadata = files.map(file => ({
-    name: file.name,
-    size: file.size,
-    timestamp: Date.now()
-  }));
-  console.log('File metadata to send:', fileMetadata);
-  if (files.length > 0) {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'share', files: fileMetadata }));
-      document.getElementById('status').textContent = 'Files shared!';
-    } else {
-      console.error('WebSocket not open, cannot share files');
-      document.getElementById('status').textContent = 'Error: Cannot share - connection lost.';
-    }
-  } else {
-    console.log('No files selected to share');
-  }
-}
-
 let ws;
 let peerConnection;
 let dataChannel;
@@ -97,26 +69,6 @@ async function registerDevice() {
   ws.onmessage = handleMessage;
 }
 
-function shareFiles() {
-  const fileInput = document.getElementById('fileInput');
-  const folderInput = document.getElementById('folderInput');
-  const files = Array.from(fileInput.files).concat(Array.from(folderInput.files || []));
-  console.log('Selected files:', files); // Debug log
-  files.forEach(file => sharedFilesMap.set(file.name, file));
-  const fileMetadata = files.map(file => ({
-    name: file.name,
-    size: file.size,
-    timestamp: Date.now()
-  }));
-  console.log('File metadata to send:', fileMetadata); // Debug log
-  if (files.length > 0) {
-    ws.send(JSON.stringify({ type: 'share', files: fileMetadata }));
-    document.getElementById('status').textContent = 'Files shared!';
-  } else {
-    console.log('No files selected to share');
-  }
-}
-
 function checkFolderSupport() {
   const folderInput = document.getElementById('folderInput');
   if (!('webkitdirectory' in folderInput)) {
@@ -159,16 +111,23 @@ function updateFileList(files) {
 }
 
 function shareFiles() {
-  const shareInput = document.getElementById('shareInput');
-  const files = Array.from(shareInput.files);
+  const fileInput = document.getElementById('fileInput');
+  const folderInput = document.getElementById('folderInput');
+  const files = Array.from(fileInput.files).concat(Array.from(folderInput.files || []));
+  console.log('Selected files:', files); // Debug log
   files.forEach(file => sharedFilesMap.set(file.name, file));
   const fileMetadata = files.map(file => ({
     name: file.name,
     size: file.size,
-    timestamp: Date.now() // Add timestamp for expiration
+    timestamp: Date.now()
   }));
-  ws.send(JSON.stringify({ type: 'share', files: fileMetadata }));
-  document.getElementById('status').textContent = 'Files shared!';
+  console.log('File metadata to send:', fileMetadata); // Debug log
+  if (files.length > 0) {
+    ws.send(JSON.stringify({ type: 'share', files: fileMetadata }));
+    document.getElementById('status').textContent = 'Files shared!';
+  } else {
+    console.log('No files selected to share');
+  }
 }
 
 function stopSharing() {
