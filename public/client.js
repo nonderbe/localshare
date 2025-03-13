@@ -140,8 +140,7 @@ function setupWebRTC(onOpenCallback) {
     peerConnection = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        // Optioneel: voeg een TURN-server toe als STUN faalt (vereist eigen server)
-        // { urls: 'turn:your-turn-server.com:3478', username: 'user', credential: 'pass' }
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' }
       ]
     });
     console.log('RTCPeerConnection created');
@@ -213,7 +212,7 @@ function handleSignal(data) {
     peerConnection = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        // Optioneel: TURN-server hier toevoegen
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' }
       ]
     });
     peerConnection.ondatachannel = (e) => {
