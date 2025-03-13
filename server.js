@@ -21,28 +21,29 @@ const server = app.listen(port, () => {
 const wss = new WebSocketServer({ server });
 
 const clients = new Map();
-const EXPIRATION_TIME = 72 * 60 * 60 * 1000; // 72 hours in milliseconds
+const EXPIRATION_TIME = 72 * 60 * 60 * 1000;
 
 wss.on('connection', (ws) => {
   const clientId = Math.random().toString(36).substring(2, 15);
 
   ws.on('message', (message) => {
     const data = JSON.parse(message);
-
+    console.log('Received message:', data);
     if (data.type === 'register') {
-      const subnet = data.ip.split('.').slice(0, 3).join('.');
-      console.log('Client registered - IP:', data.ip, 'Subnet:', subnet);
-      clients.set(ws, { id: clientId, ip: data.ip, subnet, sharedFiles: [] });
+      console.log('Client registered - ID:', clientId);
+      clients.set(ws, { id: clientId, sharedFiles: [] });
       ws.send(JSON.stringify({ type: 'register', clientId }));
-      broadcastUpdate(subnet);
+      broadcastUpdate();
     } else if (data.type === 'share') {
       const clientInfo = clients.get(ws);
-      clientInfo.sharedFiles = data.files; // Files now include timestamps
-      broadcastUpdate(clientInfo.subnet);
+      clientInfo.sharedFiles = data.files;
+      console.log('Client shared files:', clientInfo.id, 'Files:', data.files);
+      broadcastUpdate();
     } else if (data.type === 'stopSharing') {
       const clientInfo = clients.get(ws);
-      clientInfo.sharedFiles = []; // Clear shared files
-      broadcastUpdate(clientInfo.subnet);
+      clientInfo.sharedFiles = [];
+      console.log('Client stopped sharing:', clientInfo.id);
+      broadcastUpdate();
     } else if (data.type === 'signal') {
       const targetClient = [...clients.entries()].find(
         ([_, info]) => info.id === data.targetId
@@ -60,39 +61,34 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     const clientInfo = clients.get(ws);
     if (clientInfo) {
-      const subnet = clientInfo.subnet;
+      console.log('Client disconnected:', clientInfo.id);
       clients.delete(ws);
-      broadcastUpdate(subnet);
+      broadcastUpdate();
     }
   });
 });
 
-function broadcastUpdate(subnet) {
+function broadcastUpdate() {
   const now = Date.now();
-  const devices = [...clients.values()].filter(client => client.subnet === subnet);
-
-  // Filter out expired files
+  const devices = [...clients.values()];
   devices.forEach(client => {
-    client.sharedFiles = client.sharedFiles.filter(file => {
+    client.sharedFiles = client.sharedFiles.filter=file => {
       const age = now - file.timestamp;
-      return age < EXPIRATION_TIME; // Keep files younger than 72 hours
+      return age < EXPIRATION_TIME;
     });
   });
-
   const deviceCount = devices.length;
   const sharedFiles = devices.flatMap(client => client.sharedFiles.map(file => ({
     name: file.name,
     size: file.size,
     ownerId: client.id,
   })));
-
-  clients.forEach((info, clientWs) => {
-    if (info.subnet === subnet) {
-      clientWs.send(JSON.stringify({
-        type: 'update',
-        deviceCount,
-        sharedFiles,
-      }));
-    }
+  console.log('Broadcasting to all - Devices:', deviceCount, 'Files:', sharedFiles);
+  clients.forEach((_, clientWs) => {
+    clientWs.send(JSON.stringify({
+      type: 'update',
+      deviceCount,
+      sharedFiles,
+    }));
   });
 }
