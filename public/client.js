@@ -134,6 +134,8 @@ function requestFile(ownerId, fileName) {
   if (peerConnection) {
     console.log('Closing existing peerConnection before new request');
     peerConnection.close();
+    peerConnection = null;
+    dataChannel = null;
   }
   setupWebRTC(() => {
     console.log('DataChannel opened, sending request for:', fileName, 'readyState:', dataChannel.readyState);
@@ -226,8 +228,14 @@ function setupWebRTC(onOpenCallback) {
 
 function handleSignal(data) {
   console.log('Received signal from:', data.fromId, 'for target:', data.targetId);
-  if (!peerConnection || peerConnection.signalingState === 'closed') {
-    console.log('Creating new RTCPeerConnection for incoming signal');
+  if (data.signal.type === 'offer') {
+    if (peerConnection && peerConnection.signalingState !== 'closed') {
+      console.log('Closing existing peerConnection for new offer');
+      peerConnection.close();
+      peerConnection = null;
+      dataChannel = null;
+    }
+    console.log('Creating new RTCPeerConnection for incoming offer');
     peerConnection = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -268,11 +276,7 @@ function handleSignal(data) {
     peerConnection.onicecandidateerror = (e) => {
       console.error('ICE candidate error (responder):', e.errorText, 'URL:', e.url);
     };
-  } else {
-    console.log('Using existing RTCPeerConnection, signalingState:', peerConnection.signalingState);
-  }
 
-  if (data.signal.type === 'offer') {
     console.log('Handling offer');
     peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal))
       .then(() => {
@@ -298,6 +302,10 @@ function handleSignal(data) {
       })
       .catch(error => console.error('Error handling offer:', error));
   } else if (data.signal.type === 'answer') {
+    if (!peerConnection) {
+      console.error('No peerConnection exists to handle answer');
+      return;
+    }
     console.log('Handling answer');
     peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal))
       .then(() => {
@@ -311,6 +319,10 @@ function handleSignal(data) {
       .catch(error => console.error('Error handling answer:', error));
   } else if (data.signal.candidate) {
     console.log('Received ICE candidate:', data.signal.candidate);
+    if (!peerConnection) {
+      console.error('No peerConnection exists to add ICE candidate');
+      return;
+    }
     if (peerConnection.remoteDescription) {
       peerConnection.addIceCandidate(new RTCIceCandidate(data.signal.candidate))
         .catch(error => console.error('Error adding ICE candidate:', error));
