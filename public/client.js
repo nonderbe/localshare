@@ -7,6 +7,8 @@ let myId;
 let targetId;
 let sharedFilesMap = new Map();
 let pendingCandidates = [];
+let receivedChunks = [];
+let expectedFileName;
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const hostname = window.location.hostname;
@@ -125,6 +127,8 @@ function stopSharing() {
 function requestFile(ownerId, fileName) {
   console.log('requestFile called - ownerId:', ownerId, 'fileName:', fileName);
   targetId = ownerId;
+  expectedFileName = fileName;
+  receivedChunks = [];
   setupWebRTC(() => {
     console.log('DataChannel opened, sending request for:', fileName);
     try {
@@ -141,7 +145,7 @@ function setupWebRTC(onOpenCallback) {
     peerConnection = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'turn:numb.viagenie.ca:3478', username: 'webrtc@live.com', credential: 'muazkh' } // Betrouwbare TURN-server
+        { urls: 'turn:numb.viagenie.ca:3478', username: 'webrtc@live.com', credential: 'muazkh' }
       ]
     });
     console.log('RTCPeerConnection created');
@@ -306,17 +310,21 @@ function handleSignal(data) {
 }
 
 function handleDataChannelMessage(e) {
-  const message = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-  if (message.type === 'request') {
-    console.log('Received file request for:', message.fileName);
-    const file = sharedFilesMap.get(message.fileName);
-    if (file) {
-      sendFileWithProgress(file);
-    } else {
-      console.error('File not found in sharedFilesMap:', message.fileName);
+  if (typeof e.data === 'string') {
+    const message = JSON.parse(e.data);
+    if (message.type === 'request') {
+      console.log('Received file request for:', message.fileName);
+      const file = sharedFilesMap.get(message.fileName);
+      if (file) {
+        sendFileWithProgress(file);
+      } else {
+        console.error('File not found in sharedFilesMap:', message.fileName);
+      }
     }
   } else {
-    receiveFileWithProgress(e.data);
+    console.log('Received file chunk, size:', e.data.byteLength);
+    receivedChunks.push(e.data);
+    receiveFileWithProgress();
   }
 }
 
@@ -336,6 +344,7 @@ function sendFileWithProgress(file) {
       if (offset < totalSize) {
         const chunk = buffer.slice(offset, offset + chunkSize);
         dataChannel.send(chunk);
+        console.log('Sent chunk, size:', chunk.byteLength, 'offset:', offset);
         offset += chunkSize;
         const progress = (offset / totalSize) * 100;
         progressFill.style.width = `${progress}%`;
@@ -343,22 +352,27 @@ function sendFileWithProgress(file) {
       } else {
         progressBar.style.display = 'none';
         document.getElementById('status').textContent = `Sent ${file.name}`;
+        console.log('File sending complete, total size:', totalSize);
       }
     }
     sendNextChunk();
   }).catch(error => console.error('Error reading file buffer:', error));
 }
 
-function receiveFileWithProgress(data) {
-  console.log('Receiving file data');
-  const blob = new Blob([data]);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = [...sharedFilesMap.keys()].find(name => name === (targetId && sharedFilesMap.get(name)?.name)) || 'downloaded_file';
-  a.click();
-  document.getElementById('status').textContent = 'File downloaded!';
-  document.getElementById('progress').style.display = 'none';
+function receiveFileWithProgress() {
+  if (receivedChunks.length > 0) {
+    console.log('Processing received chunks, total chunks:', receivedChunks.length);
+    const blob = new Blob(receivedChunks);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = expectedFileName || 'downloaded_file';
+    a.click();
+    document.getElementById('status').textContent = 'File downloaded!';
+    document.getElementById('progress').style.display = 'none';
+    console.log('Download triggered for:', expectedFileName, 'size:', blob.size);
+    receivedChunks = []; // Reset na download
+  }
 }
 
 window.onload = registerDevice;
