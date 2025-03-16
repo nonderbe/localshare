@@ -9,6 +9,7 @@ let sharedFilesMap = new Map();
 let pendingCandidates = [];
 let receivedChunks = [];
 let expectedFileName;
+let totalSize = 0;
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const hostname = window.location.hostname;
@@ -129,6 +130,7 @@ function requestFile(ownerId, fileName) {
   targetId = ownerId;
   expectedFileName = fileName;
   receivedChunks = [];
+  totalSize = 0;
   setupWebRTC(() => {
     console.log('DataChannel opened, sending request for:', fileName);
     try {
@@ -320,19 +322,36 @@ function handleDataChannelMessage(e) {
       } else {
         console.error('File not found in sharedFilesMap:', message.fileName);
       }
+    } else if (message.type === 'fileSize') {
+      totalSize = message.size;
+      console.log('Expected file size:', totalSize);
+    } else if (message.type === 'end') {
+      console.log('Received end signal');
+      receiveFileWithProgress();
     }
   } else {
     console.log('Received file chunk, size:', e.data.byteLength);
     receivedChunks.push(e.data);
-    receiveFileWithProgress();
+    const receivedSize = receivedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+    console.log('Total received size:', receivedSize);
+    if (totalSize > 0 && receivedSize >= totalSize) {
+      receiveFileWithProgress();
+    }
   }
 }
 
 function sendFileWithProgress(file) {
   console.log('Sending file:', file.name);
+  if (dataChannel.readyState !== 'open') {
+    console.error('DataChannel not open, cannot send file');
+    return;
+  }
   const chunkSize = 16384;
   file.arrayBuffer().then(buffer => {
     const totalSize = buffer.byteLength;
+    console.log('Sending file size info:', totalSize);
+    dataChannel.send(JSON.stringify({ type: 'fileSize', size: totalSize }));
+    
     let offset = 0;
     const progressBar = document.getElementById('progress');
     const progressFill = document.getElementById('progressFill');
@@ -350,6 +369,8 @@ function sendFileWithProgress(file) {
         progressFill.style.width = `${progress}%`;
         setTimeout(sendNextChunk, 10);
       } else {
+        console.log('Sending end signal');
+        dataChannel.send(JSON.stringify({ type: 'end' }));
         progressBar.style.display = 'none';
         document.getElementById('status').textContent = `Sent ${file.name}`;
         console.log('File sending complete, total size:', totalSize);
@@ -363,15 +384,22 @@ function receiveFileWithProgress() {
   if (receivedChunks.length > 0) {
     console.log('Processing received chunks, total chunks:', receivedChunks.length);
     const blob = new Blob(receivedChunks);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = expectedFileName || 'downloaded_file';
-    a.click();
-    document.getElementById('status').textContent = 'File downloaded!';
-    document.getElementById('progress').style.display = 'none';
-    console.log('Download triggered for:', expectedFileName, 'size:', blob.size);
-    receivedChunks = []; // Reset na download
+    const receivedSize = blob.size;
+    console.log('Combined blob size:', receivedSize);
+    if (totalSize > 0 && receivedSize >= totalSize) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = expectedFileName || 'downloaded_file';
+      a.click();
+      document.getElementById('status').textContent = 'File downloaded!';
+      document.getElementById('progress').style.display = 'none';
+      console.log('Download triggered for:', expectedFileName, 'size:', receivedSize);
+      receivedChunks = [];
+      totalSize = 0;
+    } else {
+      console.log('Waiting for more chunks or end signal');
+    }
   }
 }
 
