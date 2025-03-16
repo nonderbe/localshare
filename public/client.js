@@ -131,10 +131,18 @@ function requestFile(ownerId, fileName) {
   expectedFileName = fileName;
   receivedChunks = [];
   totalSize = 0;
+  if (peerConnection) {
+    console.log('Closing existing peerConnection before new request');
+    peerConnection.close();
+  }
   setupWebRTC(() => {
-    console.log('DataChannel opened, sending request for:', fileName);
+    console.log('DataChannel opened, sending request for:', fileName, 'readyState:', dataChannel.readyState);
     try {
-      dataChannel.send(JSON.stringify({ type: 'request', fileName }));
+      if (dataChannel.readyState === 'open') {
+        dataChannel.send(JSON.stringify({ type: 'request', fileName }));
+      } else {
+        console.error('DataChannel not open, cannot send request');
+      }
     } catch (error) {
       console.error('Error sending request:', error);
     }
@@ -218,7 +226,7 @@ function setupWebRTC(onOpenCallback) {
 
 function handleSignal(data) {
   console.log('Received signal from:', data.fromId, 'for target:', data.targetId);
-  if (!peerConnection) {
+  if (!peerConnection || peerConnection.signalingState === 'closed') {
     console.log('Creating new RTCPeerConnection for incoming signal');
     peerConnection = new RTCPeerConnection({
       iceServers: [
@@ -260,6 +268,8 @@ function handleSignal(data) {
     peerConnection.onicecandidateerror = (e) => {
       console.error('ICE candidate error (responder):', e.errorText, 'URL:', e.url);
     };
+  } else {
+    console.log('Using existing RTCPeerConnection, signalingState:', peerConnection.signalingState);
   }
 
   if (data.signal.type === 'offer') {
@@ -341,7 +351,7 @@ function handleDataChannelMessage(e) {
 }
 
 function sendFileWithProgress(file) {
-  console.log('Sending file:', file.name);
+  console.log('Sending file:', file.name, 'DataChannel readyState:', dataChannel.readyState);
   if (dataChannel.readyState !== 'open') {
     console.error('DataChannel not open, cannot send file');
     return;
@@ -361,6 +371,10 @@ function sendFileWithProgress(file) {
 
     function sendNextChunk() {
       if (offset < totalSize) {
+        if (dataChannel.readyState !== 'open') {
+          console.error('DataChannel closed during sending, aborting');
+          return;
+        }
         const chunk = buffer.slice(offset, offset + chunkSize);
         dataChannel.send(chunk);
         console.log('Sent chunk, size:', chunk.byteLength, 'offset:', offset);
