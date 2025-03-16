@@ -6,7 +6,7 @@ let dataChannel;
 let myId;
 let targetId;
 let sharedFilesMap = new Map();
-let pendingCandidates = []; // Buffer voor kandidaten vóór remoteDescription
+let pendingCandidates = [];
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const hostname = window.location.hostname;
@@ -141,7 +141,7 @@ function setupWebRTC(onOpenCallback) {
     peerConnection = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'turn:relay1.express-turn.com:3478', username: 'testuser', credential: 'testpass' } // Betrouwbare TURN-server
+        { urls: 'turn:numb.viagenie.ca:3478', username: 'webrtc@live.com', credential: 'muazkh' } // Betrouwbare TURN-server
       ]
     });
     console.log('RTCPeerConnection created');
@@ -149,8 +149,8 @@ function setupWebRTC(onOpenCallback) {
     console.error('Error creating RTCPeerConnection:', error);
     return;
   }
-  dataChannel = peerConnection.createDataChannel('fileTransfer', { negotiated: true, id: 0 });
-  console.log('DataChannel initialized with ID 0');
+  dataChannel = peerConnection.createDataChannel('fileTransfer');
+  console.log('DataChannel created');
 
   dataChannel.onopen = () => {
     console.log('DataChannel opened');
@@ -217,15 +217,14 @@ function handleSignal(data) {
     peerConnection = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'turn:relay1.express-turn.com:3478', username: 'testuser', credential: 'testpass' }
+        { urls: 'turn:numb.viagenie.ca:3478', username: 'webrtc@live.com', credential: 'muazkh' }
       ]
     });
-    dataChannel = peerConnection.createDataChannel('fileTransfer', { negotiated: true, id: 0 });
-    console.log('DataChannel initialized (responder) with ID 0');
+    console.log('RTCPeerConnection created (responder)');
 
     peerConnection.ondatachannel = (e) => {
-      console.log('DataChannel received from peer:', e.channel);
       dataChannel = e.channel;
+      console.log('Incoming DataChannel received:', e.channel.label);
       dataChannel.onopen = () => {
         console.log('Incoming DataChannel opened');
         document.getElementById('status').textContent = 'Connection established!';
@@ -262,7 +261,6 @@ function handleSignal(data) {
     peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal))
       .then(() => {
         console.log('Remote description set');
-        // Verwerk uitgestelde kandidaten
         while (pendingCandidates.length > 0) {
           const candidate = pendingCandidates.shift();
           console.log('Adding buffered ICE candidate:', candidate);
@@ -283,6 +281,18 @@ function handleSignal(data) {
         }));
       })
       .catch(error => console.error('Error handling offer:', error));
+  } else if (data.signal.type === 'answer') {
+    console.log('Handling answer');
+    peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal))
+      .then(() => {
+        console.log('Remote description set for answer');
+        while (pendingCandidates.length > 0) {
+          const candidate = pendingCandidates.shift();
+          console.log('Adding buffered ICE candidate after answer:', candidate);
+          peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        }
+      })
+      .catch(error => console.error('Error handling answer:', error));
   } else if (data.signal.candidate) {
     console.log('Received ICE candidate:', data.signal.candidate);
     if (peerConnection.remoteDescription) {
