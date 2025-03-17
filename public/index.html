@@ -3,41 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FileShare</title>
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <title>LocalShare</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #fileList { list-style-type: none; padding: 0; }
+    #fileList li { margin: 10px 0; }
+    #progress { display: none; width: 100%; background: #ddd; height: 20px; }
+    #progressFill { width: 0; height: 100%; background: #4caf50; }
+    #logContainer { margin-top: 20px; max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; font-size: 12px; }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <h1><i class="fas fa-share-alt"></i> FileShare</h1>
-    
-    <section class="card">
-      <h2><i class="fas fa-network-wired"></i> Device Discovery</h2>
-      <p id="deviceCount">Connecting...</p>
-    </section>
-
-    <section class="card">
-      <h2><i class="fas fa-file-upload"></i> File Sharing</h2>
-      <div class="share-area">
-        <label>Share individual files:</label>
-        <input type="file" id="fileInput" multiple>
-        <label>Share folders:</label>
-        <input type="file" id="folderInput" webkitdirectory>
-        <p id="fallbackMessage" class="fallback" style="display: none;">
-          <i class="fas fa-exclamation-circle"></i> Folder sharing not supported in your browser. Select multiple files instead.
-        </p>
-        <button onclick="console.log('Share button clicked');shareFiles()" class="btn-share"><i class="fas fa-arrow-up"></i> Share</button>
-        <button onclick="stopSharing()" class="btn-stop"><i class="fas fa-stop"></i> Stop Sharing</button>
-      </div>
-      <h3><i class="fas fa-folder-open"></i> Available Files</h3>
-      <ul id="fileList"></ul>
-    </section>
-
-    <div id="status" class="status"></div>
-    <div id="progress" class="progress-bar" style="display: none;">
-      <div id="progressFill" class="progress-fill"></div>
-    </div>
-  </div>
-  <script src="client.js"></script>
+  <h1>LocalShare</h1>
+  <p id="deviceCount">Connecting...</p>
+  <input type="file" id="fileInput" multiple>
+  <input type="file" id="folderInput" webkitdirectory directory multiple style="display: none;">
+  <p id="fallbackMessage" style="display: none;">Folder upload not supported. Please use individual files.</p>
+  <button onclick="shareFiles()">Share Files</button>
+  <button onclick="stopSharing()">Stop Sharing</button>
+  <p id="status"></p>
+  <div id="progress"><div id="progressFill"></div></div>
+  <ul id="fileList"></ul>
+  <div id="logContainer"></div>
+  <script src="/client.js"></script>
 </body>
 </html>
