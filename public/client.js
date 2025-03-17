@@ -196,6 +196,12 @@ function setupWebRTC(onOpenCallback) {
   };
   peerConnection.onconnectionstatechange = () => {
     console.log('Connection state:', peerConnection.connectionState);
+    if (peerConnection.connectionState === 'disconnected') {
+      console.log('Connection disconnected, closing peerConnection');
+      peerConnection.close();
+      peerConnection = null;
+      dataChannel = null;
+    }
   };
   peerConnection.oniceconnectionstatechange = () => {
     console.log('ICE connection state:', peerConnection.iceConnectionState);
@@ -269,6 +275,12 @@ function handleSignal(data) {
     };
     peerConnection.onconnectionstatechange = () => {
       console.log('Connection state (responder):', peerConnection.connectionState);
+      if (peerConnection.connectionState === 'disconnected') {
+        console.log('Connection disconnected (responder), closing peerConnection');
+        peerConnection.close();
+        peerConnection = null;
+        dataChannel = null;
+      }
     };
     peerConnection.oniceconnectionstatechange = () => {
       console.log('ICE connection state (responder):', peerConnection.iceConnectionState);
@@ -334,8 +346,10 @@ function handleSignal(data) {
 }
 
 function handleDataChannelMessage(e) {
+  console.log('DataChannel message received, type:', typeof e.data);
   if (typeof e.data === 'string') {
     const message = JSON.parse(e.data);
+    console.log('Parsed message:', message);
     if (message.type === 'request') {
       console.log('Received file request for:', message.fileName);
       const file = sharedFilesMap.get(message.fileName);
