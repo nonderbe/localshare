@@ -1,7 +1,18 @@
+// Globale variabelen
 const iceServers = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'turn:109.236.133.105:3478', username: 'test', credential: 'test123' }
 ];
+let ws;
+let myId;
+let peerConnection;
+let dataChannel;
+let targetId;
+let expectedFileName;
+let totalSize = 0;
+let receivedChunks = [];
+let pendingCandidates = [];
+const sharedFilesMap = new Map();
 
 function logToUI(message) {
   console.log(message);
@@ -14,94 +25,49 @@ function logToUI(message) {
 
 logToUI('client.js loaded successfully');
 
-let ws;
-let peerConnection;
-let dataChannel;
-let myId;
-let targetId;
-let sharedFilesMap = new Map();
-let pendingCandidates = [];
-let receivedChunks = [];
-let expectedFileName;
-let totalSize = 0;
+function connectWebSocket() {
+  const wsUrl = 'wss://localshare-cj69.onrender.com';
+  logToUI(`Attempting to connect to WebSocket at: ${wsUrl}`);
+  ws = new WebSocket(wsUrl);
 
-const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const hostname = window.location.hostname;
-const serverUrl = `${protocol}//${hostname}`;
-
-async function registerDevice() {
-  document.getElementById('deviceCount').textContent = 'Connecting...';
-
-  logToUI(`Attempting to connect to WebSocket at: ${serverUrl}`);
-  ws = new WebSocket(serverUrl);
-
-  ws.onopen = () => {
-    logToUI('WebSocket connected successfully');
-    ws.send(JSON.stringify({ type: 'register' }));
-    updateDeviceCount(1);
-    checkFolderSupport();
-  };
-
-  ws.onerror = (error) => {
-    logToUI(`WebSocket error: ${JSON.stringify(error)}`);
-    document.getElementById('deviceCount').textContent = 'Error: Could not connect to server.';
-  };
-
-  ws.onclose = (event) => {
-    logToUI(`WebSocket closed: ${JSON.stringify(event)}`);
-    if (document.getElementById('deviceCount').textContent === 'Connecting...') {
-      document.getElementById('deviceCount').textContent = 'Error: Connection lost.';
-    }
-  };
-
+  ws.onopen = () => logToUI('WebSocket connected successfully');
+  ws.onclose = () => logToUI('WebSocket connection closed');
+  ws.onerror = (error) => logToUI('WebSocket error: ' + error);
   ws.onmessage = handleMessage;
-}
-
-function checkFolderSupport() {
-  const folderInput = document.getElementById('folderInput');
-  if (!('webkitdirectory' in folderInput)) {
-    document.getElementById('fallbackMessage').style.display = 'block';
-    folderInput.style.display = 'none';
-  }
 }
 
 function handleMessage(event) {
   const data = JSON.parse(event.data);
   logToUI(`Received from server: ${JSON.stringify(data)}`);
-  if (data.type === 'register') {
-    myId = data.clientId;
-  } else if (data.type === 'update') {
-    logToUI(`Processing update - Device count: ${data.deviceCount} Files: ${JSON.stringify(data.sharedFiles)}`);
-    updateDeviceCount(data.deviceCount);
-    updateFileList(data.sharedFiles);
-  } else if (data.type === 'signal') {
-    handleSignal(data);
+  switch (data.type) {
+    case 'register':
+      myId = data.clientId;
+      break;
+    case 'update':
+      updateFileList(data.deviceCount, data.sharedFiles);
+      break;
+    case 'signal':
+      handleSignal(data);
+      break;
   }
 }
 
-function updateDeviceCount(count) {
-  document.getElementById('deviceCount').textContent = 
-    `${count} device${count === 1 ? '' : 's'} connected`;
-}
-
-function updateFileList(files) {
-  const list = document.getElementById('fileList');
-  list.innerHTML = '';
+function updateFileList(deviceCount, files) {
+  logToUI(`Processing update - Device count: ${deviceCount} Files: ${JSON.stringify(files)}`);
+  const fileList = document.getElementById('fileList');
+  fileList.innerHTML = '';
   logToUI(`Files received for list: ${JSON.stringify(files)}`);
   files.forEach(file => {
     logToUI(`Processing file: ${file.name} Owner: ${file.ownerId} My ID: ${myId}`);
     const li = document.createElement('li');
-    const sizeInKB = (file.size / 1024).toFixed(2);
-    li.innerHTML = `<span>${file.name} (${sizeInKB} KB)</span>`;
+    li.textContent = `${file.name} (${file.size} bytes) - Owner: ${file.ownerId}`;
     if (file.ownerId !== myId) {
-      const downloadBtn = document.createElement('button');
-      downloadBtn.textContent = 'Download';
-      downloadBtn.onclick = () => requestFile(file.ownerId, file.name);
-      li.appendChild(downloadBtn);
-    } else {
-      li.innerHTML += ' (Yours)';
+      const downloadButton = document.createElement('button');
+      downloadButton.textContent = 'Download';
+      downloadButton.onclick = () => requestFile(file.ownerId, file.name);
+      li.appendChild(downloadButton);
     }
-    list.appendChild(li);
+    fileList.appendChild(li);
   });
 }
 
@@ -134,12 +100,6 @@ function shareFiles() {
   } else {
     logToUI('No files selected to share');
   }
-}
-
-function stopSharing() {
-  sharedFilesMap.clear();
-  ws.send(JSON.stringify({ type: 'stopSharing' }));
-  document.getElementById('status').textContent = 'File sharing stopped.';
 }
 
 function requestFile(ownerId, fileName) {
@@ -175,80 +135,17 @@ function requestFile(ownerId, fileName) {
     }
   };
 
-function setupWebRTC(onOpenCallback) {
-  logToUI('Setting up WebRTC connection');
-  try {
-    peerConnection = new RTCPeerConnection(iceServers);
-    logToUI('RTCPeerConnection created');
-  } catch (error) {
-    logToUI(`Error creating RTCPeerConnection: ${JSON.stringify(error)}`);
-    return;
-  }
-  dataChannel = peerConnection.createDataChannel('fileTransfer');
-  logToUI('DataChannel created');
-
-  dataChannel.onopen = () => {
-    logToUI('DataChannel opened');
-    document.getElementById('status').textContent = 'Connection established!';
-    if (onOpenCallback) onOpenCallback();
-  };
-  dataChannel.onmessage = handleDataChannelMessage;
-  dataChannel.onerror = (error) => logToUI(`DataChannel error: ${JSON.stringify(error)}`);
-  dataChannel.onclose = () => logToUI('DataChannel closed');
-
-  peerConnection.onicecandidate = (e) => {
-    if (e.candidate) {
-      logToUI(`ICE candidate found: ${e.candidate.candidate}`);
-      try {
-        ws.send(JSON.stringify({
-          type: 'signal',
-          targetId,
-          signal: { candidate: e.candidate },
-        }));
-        logToUI(`ICE candidate sent to: ${targetId}`);
-      } catch (error) {
-        logToUI(`Error sending ICE candidate: ${JSON.stringify(error)}`);
-      }
-    } else {
-      logToUI('ICE candidate gathering complete');
-    }
-  };
-  peerConnection.onconnectionstatechange = () => {
-    logToUI(`Connection state: ${peerConnection.connectionState}`);
-    if (peerConnection.connectionState === 'disconnected') {
-      logToUI('Connection disconnected, closing peerConnection');
-      peerConnection.close();
-      peerConnection = null;
-      dataChannel = null;
-    }
-  };
-  peerConnection.oniceconnectionstatechange = () => {
-    logToUI(`ICE connection state: ${peerConnection.iceConnectionState}`);
-  };
-  peerConnection.onsignalingstatechange = () => {
-    logToUI(`Signaling state: ${peerConnection.signalingState}`);
-  };
-  peerConnection.onicecandidateerror = (e) => {
-    logToUI(`ICE candidate error: ${e.errorText} URL: ${e.url}`);
-  };
-
   logToUI('Creating offer');
   peerConnection.createOffer()
-    .then(offer => {
-      logToUI(`Offer created: ${offer.sdp.substring(0, 100)}...`);
+    .then((offer) => {
+      logToUI(`Offer created: ${offer.sdp}`);
       return peerConnection.setLocalDescription(offer);
     })
     .then(() => {
-      logToUI(`Local description set, sending offer to target: ${targetId}`);
-      ws.send(JSON.stringify({
-        type: 'signal',
-        targetId,
-        signal: peerConnection.localDescription,
-      }));
+      logToUI(`Local description set, sending offer to target: ${ownerId}`);
+      ws.send(JSON.stringify({ type: 'signal', targetId: ownerId, signal: peerConnection.localDescription }));
     })
-    .catch(error => {
-      logToUI(`WebRTC setup error: ${JSON.stringify(error)}`);
-    });
+    .catch((error) => logToUI('Error creating offer: ' + error));
 }
 
 function handleSignal(data) {
@@ -368,82 +265,48 @@ function handleDataChannelMessage(e) {
 }
 
 function sendFileWithProgress(file) {
-  logToUI(`Sending file: ${file.name} DataChannel readyState: ${dataChannel.readyState}`);
-  if (dataChannel.readyState !== 'open') {
-    logToUI('DataChannel not open, cannot send file');
-    return;
-  }
+  logToUI(`Sending file: ${file.name}, size: ${file.size}`);
   const chunkSize = 16384;
-  file.arrayBuffer().then(buffer => {
-    const totalSize = buffer.byteLength;
-    logToUI(`Sending file size info: ${totalSize}`);
-    dataChannel.send(JSON.stringify({ type: 'fileSize', size: totalSize }));
-    
-    let offset = 0;
-    const progressBar = document.getElementById('progress');
-    const progressFill = document.getElementById('progressFill');
+  dataChannel.send(JSON.stringify({ type: 'fileSize', size: file.size }));
+  const reader = new FileReader();
+  let offset = 0;
 
-    progressBar.style.display = 'block';
-    document.getElementById('status').textContent = `Sending ${file.name}...`;
-
-    function sendNextChunk() {
-      if (offset < totalSize) {
-        if (dataChannel.readyState !== 'open') {
-          logToUI('DataChannel closed during sending, aborting');
-          return;
-        }
-        const chunk = buffer.slice(offset, offset + chunkSize);
-        dataChannel.send(chunk);
-        logToUI(`Sent chunk, size: ${chunk.byteLength} offset: ${offset}`);
-        offset += chunkSize;
-        const progress = (offset / totalSize) * 100;
-        progressFill.style.width = `${progress}%`;
-        setTimeout(sendNextChunk, 10);
+  reader.onload = (event) => {
+    if (event.target.result) {
+      dataChannel.send(event.target.result);
+      offset += event.target.result.byteLength;
+      logToUI(`Sent chunk, offset: ${offset}/${file.size}`);
+      if (offset < file.size) {
+        readSlice(offset);
       } else {
-        logToUI('Sending end signal');
         dataChannel.send(JSON.stringify({ type: 'end' }));
-        progressBar.style.display = 'none';
-        document.getElementById('status').textContent = `Sent ${file.name}`;
-        logToUI(`File sending complete, total size: ${totalSize}`);
-        if (peerConnection) {
-          peerConnection.close();
-          peerConnection = null;
-          dataChannel = null;
-          logToUI('PeerConnection closed after sending');
-        }
+        logToUI('File transfer complete');
       }
     }
-    sendNextChunk();
-  }).catch(error => logToUI(`Error reading file buffer: ${JSON.stringify(error)}`));
+  };
+
+  const readSlice = (o) => {
+    const slice = file.slice(offset, o + chunkSize);
+    reader.readAsArrayBuffer(slice);
+  };
+
+  readSlice(0);
 }
 
 function receiveFileWithProgress() {
-  if (receivedChunks.length > 0) {
-    logToUI(`Processing received chunks, total chunks: ${receivedChunks.length}`);
-    const blob = new Blob(receivedChunks);
-    const receivedSize = blob.size;
-    logToUI(`Combined blob size: ${receivedSize}`);
-    if (totalSize > 0 && receivedSize >= totalSize) {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = expectedFileName || 'downloaded_file';
-      a.click();
-      document.getElementById('status').textContent = 'File downloaded!';
-      document.getElementById('progress').style.display = 'none';
-      logToUI(`Download triggered for: ${expectedFileName} size: ${receivedSize}`);
-      receivedChunks = [];
-      totalSize = 0;
-      if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-        dataChannel = null;
-        logToUI('PeerConnection closed after download');
-      }
-    } else {
-      logToUI('Waiting for more chunks or end signal');
-    }
-  }
+  logToUI('Processing received file');
+  const blob = new Blob(receivedChunks);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = expectedFileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  logToUI(`File downloaded: ${expectedFileName}, size: ${blob.size}`);
+  receivedChunks = [];
+  totalSize = 0;
 }
 
-window.onload = registerDevice;
+connectWebSocket();
