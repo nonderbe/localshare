@@ -268,7 +268,7 @@ function setupWebRTC(onOpenCallback) {
 
 function handleSignal(data) {
   const { fromId, signal } = data;
-  logToUI(`Received signal from: ${fromId} for target: ${targetId}`);
+  logToUI(`Received signal from: ${fromId} for target: ${myId}`);
   
   if (signal.type === 'offer') {
     if (peerConnection) {
@@ -308,6 +308,25 @@ function handleSignal(data) {
         ws.send(JSON.stringify({ type: 'signal', targetId: fromId, signal: peerConnection.localDescription }));
       })
       .catch((error) => logToUI('Error handling offer: ' + error));
+  } else if (signal.type === 'answer') {
+    if (peerConnection) {
+      logToUI('Setting remote description with answer from: ' + fromId);
+      peerConnection.setRemoteDescription(new RTCSessionDescription(signal))
+        .then(() => {
+          // Voeg gebufferde kandidaten toe na het instellen van remoteDescription
+          if (pendingCandidates.length > 0) {
+            logToUI(`Adding ${pendingCandidates.length} pending ICE candidates`);
+            pendingCandidates.forEach(candidate => {
+              peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+                .catch(error => logToUI('Error adding pending ICE candidate: ' + error));
+            });
+            pendingCandidates = [];
+          }
+        })
+        .catch((error) => logToUI('Error setting remote description: ' + error));
+    } else {
+      logToUI('No peerConnection exists to handle answer');
+    }
   } else if (signal.candidate) {
     if (peerConnection) {
       logToUI(`Received ICE candidate: ${JSON.stringify(signal)}`);
@@ -317,11 +336,9 @@ function handleSignal(data) {
         sdpMLineIndex: signal.sdpMLineIndex !== undefined ? signal.sdpMLineIndex : 0
       };
       if (peerConnection.remoteDescription) {
-        // Voeg kandidaat direct toe als remoteDescription al is ingesteld
         peerConnection.addIceCandidate(new RTCIceCandidate(candidateObj))
           .catch((error) => logToUI('Error adding ICE candidate: ' + error));
       } else {
-        // Buffer kandidaat als remoteDescription nog niet klaar is
         logToUI('Buffering ICE candidate until remoteDescription is set');
         pendingCandidates.push(candidateObj);
       }
