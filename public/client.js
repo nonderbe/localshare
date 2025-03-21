@@ -150,7 +150,7 @@ function requestFile(ownerId, fileName) {
     logToUI('RTCPeerConnection created');
   } catch (error) {
     logToUI(`Error creating RTCPeerConnection: ${error.message || error}`);
-    return; // Stop uitvoering als dit faalt
+    return;
   }
 
   dataChannel = peerConnection.createDataChannel('fileTransfer');
@@ -175,6 +175,17 @@ function requestFile(ownerId, fileName) {
     .then(() => {
       logToUI(`Local description set, sending offer to target: ${ownerId}`);
       ws.send(JSON.stringify({ type: 'signal', targetId: ownerId, signal: peerConnection.localDescription }));
+    })
+    .then(() => {
+      // Voeg gebufferde kandidaten toe na het instellen van localDescription (indien nodig)
+      if (pendingCandidates.length > 0) {
+        logToUI(`Adding ${pendingCandidates.length} pending ICE candidates after offer`);
+        pendingCandidates.forEach(candidate => {
+          peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+            .catch(error => logToUI('Error adding pending ICE candidate: ' + error));
+        });
+        pendingCandidates = [];
+      }
     })
     .catch((error) => logToUI('Error creating offer: ' + error));
 }
@@ -279,7 +290,18 @@ function handleSignal(data) {
     };
 
     peerConnection.setRemoteDescription(new RTCSessionDescription(signal))
-      .then(() => peerConnection.createAnswer())
+      .then(() => {
+        // Voeg gebufferde kandidaten toe na het instellen van remoteDescription
+        if (pendingCandidates.length > 0) {
+          logToUI(`Adding ${pendingCandidates.length} pending ICE candidates`);
+          pendingCandidates.forEach(candidate => {
+            peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+              .catch(error => logToUI('Error adding pending ICE candidate: ' + error));
+          });
+          pendingCandidates = [];
+        }
+        return peerConnection.createAnswer();
+      })
       .then((answer) => peerConnection.setLocalDescription(answer))
       .then(() => {
         logToUI('Sending answer to: ' + fromId);
@@ -291,11 +313,18 @@ function handleSignal(data) {
       logToUI(`Received ICE candidate: ${JSON.stringify(signal)}`);
       const candidateObj = {
         candidate: signal.candidate,
-        sdpMid: signal.sdpMid || '0', // Default naar '0' als ontbreekt
-        sdpMLineIndex: signal.sdpMLineIndex !== undefined ? signal.sdpMLineIndex : 0 // Default naar 0
+        sdpMid: signal.sdpMid || '0',
+        sdpMLineIndex: signal.sdpMLineIndex !== undefined ? signal.sdpMLineIndex : 0
       };
-      peerConnection.addIceCandidate(new RTCIceCandidate(candidateObj))
-        .catch((error) => logToUI('Error adding ICE candidate: ' + error));
+      if (peerConnection.remoteDescription) {
+        // Voeg kandidaat direct toe als remoteDescription al is ingesteld
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidateObj))
+          .catch((error) => logToUI('Error adding ICE candidate: ' + error));
+      } else {
+        // Buffer kandidaat als remoteDescription nog niet klaar is
+        logToUI('Buffering ICE candidate until remoteDescription is set');
+        pendingCandidates.push(candidateObj);
+      }
     } else {
       logToUI('No peerConnection exists to add ICE candidate');
     }
