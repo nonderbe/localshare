@@ -1,11 +1,12 @@
+const iceServers = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'turn:109.236.133.105:3478', username: 'test', credential: 'test123' }
+];
+
 function logToUI(message) {
   console.log(message);
   const logContainer = document.getElementById('logContainer');
   const logEntry = document.createElement('div');
-  const iceServers = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'turn:109.236.133.105:3478', username: 'test', credential: 'test123' }
-  ];
   logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
   logContainer.appendChild(logEntry);
   logContainer.scrollTop = logContainer.scrollHeight;
