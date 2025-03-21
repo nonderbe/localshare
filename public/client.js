@@ -208,29 +208,6 @@ function requestFile(ownerId, fileName) {
     }
   };
 
-  logToUI('Creating offer');
-  peerConnection.createOffer()
-    .then((offer) => {
-      logToUI(`Offer created: ${offer.sdp}`);
-      return peerConnection.setLocalDescription(offer);
-    })
-    .then(() => {
-      logToUI(`Local description set, sending offer to target: ${ownerId}`);
-      ws.send(JSON.stringify({ type: 'signal', targetId: ownerId, signal: peerConnection.localDescription }));
-    })
-    .then(() => {
-      if (pendingCandidates.length > 0) {
-        logToUI(`Adding ${pendingCandidates.length} pending ICE candidates after offer`);
-        pendingCandidates.forEach(candidate => {
-          peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-            .catch(error => logToUI('Error adding pending ICE candidate: ' + error));
-        });
-        pendingCandidates = [];
-      }
-    })
-    .catch((error) => logToUI('Error creating offer: ' + error));
-}
-
 function setupWebRTC(onOpenCallback) {
   logToUI('Setting up WebRTC connection');
   try {
