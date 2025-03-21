@@ -113,7 +113,10 @@ function shareFiles() {
   logToUI(`Raw folderInput.files: ${JSON.stringify(folderInput.files)}`);
   const files = Array.from(fileInput.files).concat(Array.from(folderInput.files || []));
   logToUI(`Combined files: ${JSON.stringify(files)}`);
-  files.forEach(file => sharedFilesMap.set(file.name, file));
+  files.forEach(file => {
+    sharedFilesMap.set(file.name, file);
+    logToUI(`Added to sharedFilesMap: ${file.name}, size: ${file.size}`);
+  });
   const fileMetadata = files.map(file => ({
     name: file.name,
     size: file.size,
@@ -277,9 +280,9 @@ function handleSignal(data) {
   logToUI(`Received signal from: ${fromId} for target: ${myId}`);
   
   if (signal.type === 'offer') {
-    if (peerConnection) {
-      logToUI('Closing existing peerConnection for new offer');
-      peerConnection.close();
+    if (peerConnection && peerConnection.signalingState !== 'closed') {
+      logToUI('Existing peerConnection still active, ignoring new offer');
+      return; // Negeer nieuw offer als er al een verbinding is
     }
     logToUI('Creating new RTCPeerConnection for incoming offer');
     peerConnection = new RTCPeerConnection({ iceServers });
@@ -297,7 +300,6 @@ function handleSignal(data) {
 
     peerConnection.setRemoteDescription(new RTCSessionDescription(signal))
       .then(() => {
-        // Voeg gebufferde kandidaten toe na het instellen van remoteDescription
         if (pendingCandidates.length > 0) {
           logToUI(`Adding ${pendingCandidates.length} pending ICE candidates`);
           pendingCandidates.forEach(candidate => {
@@ -319,7 +321,6 @@ function handleSignal(data) {
       logToUI('Setting remote description with answer from: ' + fromId);
       peerConnection.setRemoteDescription(new RTCSessionDescription(signal))
         .then(() => {
-          // Voeg gebufferde kandidaten toe na het instellen van remoteDescription
           if (pendingCandidates.length > 0) {
             logToUI(`Adding ${pendingCandidates.length} pending ICE candidates`);
             pendingCandidates.forEach(candidate => {
@@ -361,8 +362,10 @@ function handleDataChannelMessage(e) {
     logToUI(`Parsed message: ${JSON.stringify(message)}`);
     if (message.type === 'request') {
       logToUI(`Received file request for: ${message.fileName}`);
+      logToUI(`sharedFilesMap contents: ${JSON.stringify([...sharedFilesMap.entries()])}`);
       const file = sharedFilesMap.get(message.fileName);
       if (file) {
+        logToUI(`Found file in sharedFilesMap: ${file.name}, size: ${file.size}`);
         sendFileWithProgress(file);
       } else {
         logToUI(`File not found in sharedFilesMap: ${message.fileName}`);
