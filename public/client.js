@@ -265,7 +265,7 @@ function handleSignal(data) {
       peerConnection.close();
     }
     logToUI('Creating new RTCPeerConnection for incoming offer');
-    peerConnection = new RTCPeerConnection({ iceServers }); // ← Toegevoegd
+    peerConnection = new RTCPeerConnection({ iceServers });
     dataChannel = peerConnection.createDataChannel('fileTransfer');
     dataChannel.onopen = () => logToUI('DataChannel opened');
     dataChannel.onclose = () => logToUI('DataChannel closed');
@@ -289,7 +289,12 @@ function handleSignal(data) {
   } else if (signal.candidate) {
     if (peerConnection) {
       logToUI(`Received ICE candidate: ${JSON.stringify(signal)}`);
-      peerConnection.addIceCandidate(new RTCIceCandidate(signal))
+      const candidateObj = {
+        candidate: signal.candidate,
+        sdpMid: signal.sdpMid || '0', // Default naar '0' als ontbreekt
+        sdpMLineIndex: signal.sdpMLineIndex !== undefined ? signal.sdpMLineIndex : 0 // Default naar 0
+      };
+      peerConnection.addIceCandidate(new RTCIceCandidate(candidateObj))
         .catch((error) => logToUI('Error adding ICE candidate: ' + error));
     } else {
       logToUI('No peerConnection exists to add ICE candidate');
