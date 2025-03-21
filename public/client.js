@@ -166,7 +166,7 @@ function setupWebRTC(onOpenCallback) {
     peerConnection = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'turn:109.236.133.105:3478', username: ´test´, credential: 'test123' } // Nieuwe TURN-server
+        { urls: 'turn:109.236.133.105:3478', username: 'test', credential: 'test123' } // Nieuwe TURN-server
       ]
     });
     logToUI('RTCPeerConnection created');
