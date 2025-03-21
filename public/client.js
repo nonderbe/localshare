@@ -155,7 +155,14 @@ function requestFile(ownerId, fileName) {
 
   dataChannel = peerConnection.createDataChannel('fileTransfer');
   logToUI('DataChannel created');
-  dataChannel.onopen = () => logToUI('DataChannel opened');
+  dataChannel.onopen = () => {
+    logToUI('DataChannel opened');
+    // Stuur een verzoek voor het bestand
+    const requestMessage = JSON.stringify({ type: 'request', fileName });
+    logToUI(`Sending file request: ${requestMessage}`);
+    dataChannel.send(requestMessage);
+    expectedFileName = fileName; // Stel de verwachte bestandsnaam in voor ontvangst
+  };
   dataChannel.onclose = () => logToUI('DataChannel closed');
   dataChannel.onmessage = handleDataChannelMessage;
 
@@ -166,6 +173,28 @@ function requestFile(ownerId, fileName) {
     }
   };
 
+  logToUI('Creating offer');
+  peerConnection.createOffer()
+    .then((offer) => {
+      logToUI(`Offer created: ${offer.sdp}`);
+      return peerConnection.setLocalDescription(offer);
+    })
+    .then(() => {
+      logToUI(`Local description set, sending offer to target: ${ownerId}`);
+      ws.send(JSON.stringify({ type: 'signal', targetId: ownerId, signal: peerConnection.localDescription }));
+    })
+    .then(() => {
+      if (pendingCandidates.length > 0) {
+        logToUI(`Adding ${pendingCandidates.length} pending ICE candidates after offer`);
+        pendingCandidates.forEach(candidate => {
+          peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+            .catch(error => logToUI('Error adding pending ICE candidate: ' + error));
+        });
+        pendingCandidates = [];
+      }
+    })
+    .catch((error) => logToUI('Error creating offer: ' + error));
+}
   logToUI('Creating offer');
   peerConnection.createOffer()
     .then((offer) => {
