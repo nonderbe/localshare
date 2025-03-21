@@ -2,6 +2,10 @@ function logToUI(message) {
   console.log(message);
   const logContainer = document.getElementById('logContainer');
   const logEntry = document.createElement('div');
+  const iceServers = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'turn:109.236.133.105:3478', username: 'test', credential: 'test123' }
+  ];
   logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
   logContainer.appendChild(logEntry);
   logContainer.scrollTop = logContainer.scrollHeight;
@@ -163,12 +167,7 @@ function requestFile(ownerId, fileName) {
 function setupWebRTC(onOpenCallback) {
   logToUI('Setting up WebRTC connection');
   try {
-    peerConnection = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'turn:109.236.133.105:3478', username: 'test', credential: 'test123' } // Nieuwe TURN-server
-      ]
-    });
+    peerConnection = new RTCPeerConnection(iceServers);
     logToUI('RTCPeerConnection created');
   } catch (error) {
     logToUI(`Error creating RTCPeerConnection: ${JSON.stringify(error)}`);
@@ -242,114 +241,43 @@ function setupWebRTC(onOpenCallback) {
 }
 
 function handleSignal(data) {
-  logToUI(`Received signal from: ${data.fromId} for target: ${data.targetId}`);
-  if (data.signal.type === 'offer') {
-    if (peerConnection && peerConnection.signalingState !== 'closed') {
+  const { fromId, signal } = data;
+  logToUI(`Received signal from: ${fromId} for target: ${targetId}`);
+  
+  if (signal.type === 'offer') {
+    if (peerConnection) {
       logToUI('Closing existing peerConnection for new offer');
       peerConnection.close();
-      peerConnection = null;
-      dataChannel = null;
     }
     logToUI('Creating new RTCPeerConnection for incoming offer');
-    peerConnection = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'turn:openrelay.metered.ca:80' }
-      ]
-    });
-    logToUI('RTCPeerConnection created (responder)');
+    peerConnection = new RTCPeerConnection({ iceServers }); // ← Toegevoegd
+    dataChannel = peerConnection.createDataChannel('fileTransfer');
+    dataChannel.onopen = () => logToUI('DataChannel opened');
+    dataChannel.onclose = () => logToUI('DataChannel closed');
+    dataChannel.onmessage = handleDataChannelMessage;
 
-    peerConnection.ondatachannel = (e) => {
-      dataChannel = e.channel;
-      logToUI(`Incoming DataChannel received: ${e.channel.label}`);
-      dataChannel.onopen = () => {
-        logToUI('Incoming DataChannel opened');
-        document.getElementById('status').textContent = 'Connection established!';
-      };
-      dataChannel.onmessage = handleDataChannelMessage;
-      dataChannel.onerror = (error) => logToUI(`Incoming DataChannel error: ${JSON.stringify(error)}`);
-      dataChannel.onclose = () => logToUI('Incoming DataChannel closed');
-    };
-    peerConnection.onicecandidate = (e) => {
-      if (e.candidate) {
-        logToUI(`ICE candidate found (responder): ${e.candidate.candidate}`);
-        ws.send(JSON.stringify({
-          type: 'signal',
-          targetId: data.fromId,
-          signal: { candidate: e.candidate },
-        }));
-      } else {
-        logToUI('ICE candidate gathering complete (responder)');
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        logToUI(`ICE candidate found: ${event.candidate.candidate}`);
+        ws.send(JSON.stringify({ type: 'signal', targetId: fromId, signal: event.candidate }));
       }
     };
-    peerConnection.onconnectionstatechange = () => {
-      logToUI(`Connection state (responder): ${peerConnection.connectionState}`);
-      if (peerConnection.connectionState === 'disconnected') {
-        logToUI('Connection disconnected (responder), closing peerConnection');
-        peerConnection.close();
-        peerConnection = null;
-        dataChannel = null;
-      }
-    };
-    peerConnection.oniceconnectionstatechange = () => {
-      logToUI(`ICE connection state (responder): ${peerConnection.iceConnectionState}`);
-    };
-    peerConnection.onicecandidateerror = (e) => {
-      logToUI(`ICE candidate error (responder): ${e.errorText} URL: ${e.url}`);
-    };
 
-    logToUI('Handling offer');
-    peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal))
+    peerConnection.setRemoteDescription(new RTCSessionDescription(signal))
+      .then(() => peerConnection.createAnswer())
+      .then((answer) => peerConnection.setLocalDescription(answer))
       .then(() => {
-        logToUI('Remote description set');
-        while (pendingCandidates.length > 0) {
-          const candidate = pendingCandidates.shift();
-          logToUI(`Adding buffered ICE candidate: ${JSON.stringify(candidate)}`);
-          peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-        }
-        return peerConnection.createAnswer();
+        logToUI('Sending answer to: ' + fromId);
+        ws.send(JSON.stringify({ type: 'signal', targetId: fromId, signal: peerConnection.localDescription }));
       })
-      .then(answer => {
-        logToUI('Answer created');
-        return peerConnection.setLocalDescription(answer);
-      })
-      .then(() => {
-        logToUI(`Sending answer to: ${data.fromId}`);
-        ws.send(JSON.stringify({
-          type: 'signal',
-          targetId: data.fromId,
-          signal: peerConnection.localDescription,
-        }));
-      })
-      .catch(error => logToUI(`Error handling offer: ${JSON.stringify(error)}`));
-  } else if (data.signal.type === 'answer') {
-    if (!peerConnection) {
-      logToUI('No peerConnection exists to handle answer');
-      return;
-    }
-    logToUI('Handling answer');
-    peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal))
-      .then(() => {
-        logToUI('Remote description set for answer');
-        while (pendingCandidates.length > 0) {
-          const candidate = pendingCandidates.shift();
-          logToUI(`Adding buffered ICE candidate after answer: ${JSON.stringify(candidate)}`);
-          peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-        }
-      })
-      .catch(error => logToUI(`Error handling answer: ${JSON.stringify(error)}`));
-  } else if (data.signal.candidate) {
-    logToUI(`Received ICE candidate: ${JSON.stringify(data.signal.candidate)}`);
-    if (!peerConnection) {
-      logToUI('No peerConnection exists to add ICE candidate');
-      return;
-    }
-    if (peerConnection.remoteDescription) {
-      peerConnection.addIceCandidate(new RTCIceCandidate(data.signal.candidate))
-        .catch(error => logToUI(`Error adding ICE candidate: ${JSON.stringify(error)}`));
+      .catch((error) => logToUI('Error handling offer: ' + error));
+  } else if (signal.candidate) {
+    if (peerConnection) {
+      logToUI(`Received ICE candidate: ${JSON.stringify(signal)}`);
+      peerConnection.addIceCandidate(new RTCIceCandidate(signal))
+        .catch((error) => logToUI('Error adding ICE candidate: ' + error));
     } else {
-      logToUI('Buffering ICE candidate until remote description is set');
-      pendingCandidates.push(data.signal.candidate);
+      logToUI('No peerConnection exists to add ICE candidate');
     }
   }
 }
