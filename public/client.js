@@ -385,44 +385,6 @@ function handleSignal(data) {
         ws.send(JSON.stringify({ type: 'signal', targetId: fromId, signal: peerConnection.localDescription }));
       })
       .catch((error) => logToUI('Error handling offer: ' + error));
-  } else if (signal.type === 'answer') {
-    if (peerConnection) {
-      logToUI('Setting remote description with answer from: ' + fromId);
-      peerConnection.setRemoteDescription(new RTCSessionDescription(signal))
-        .then(() => {
-          if (pendingCandidates.length > 0) {
-            logToUI(`Adding ${pendingCandidates.length} pending ICE candidates`);
-            pendingCandidates.forEach(candidate => {
-              peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-                .catch(error => logToUI('Error adding pending ICE candidate: ' + error));
-            });
-            pendingCandidates = [];
-          }
-        })
-        .catch((error) => logToUI('Error setting remote description: ' + error));
-    } else {
-      logToUI('No peerConnection exists to handle answer');
-    }
-  } else if (signal.candidate) {
-    if (peerConnection) {
-      logToUI(`Received ICE candidate: ${JSON.stringify(signal)}`);
-      const candidateObj = {
-        candidate: signal.candidate,
-        sdpMid: signal.sdpMid || '0',
-        sdpMLineIndex: signal.sdpMLineIndex !== undefined ? signal.sdpMLineIndex : 0
-      };
-      if (peerConnection.remoteDescription) {
-        peerConnection.addIceCandidate(new RTCIceCandidate(candidateObj))
-          .catch((error) => logToUI('Error adding ICE candidate: ' + error));
-      } else {
-        logToUI('Buffering ICE candidate until remoteDescription is set');
-        pendingCandidates.push(candidateObj);
-      }
-    } else {
-      logToUI('No peerConnection exists to add ICE candidate');
-    }
-  }
-}
 
 function handleDataChannelMessage(e) {
   logToUI(`DataChannel message received, type: ${typeof e.data}`);
