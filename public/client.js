@@ -3,8 +3,8 @@ function logToUI(message) {
   const logContainer = document.getElementById('logContainer');
   const logEntry = document.createElement('div');
   const iceServers = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'turn:109.236.133.105:3478', username: 'test', credential: 'test123' }
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'turn:109.236.133.105:3478', username: 'test', credential: 'test123' }
   ];
   logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
   logContainer.appendChild(logEntry);
@@ -141,27 +141,41 @@ function stopSharing() {
 function requestFile(ownerId, fileName) {
   logToUI(`requestFile called - ownerId: ${ownerId} fileName: ${fileName}`);
   targetId = ownerId;
-  expectedFileName = fileName;
-  receivedChunks = [];
-  totalSize = 0;
-  if (peerConnection) {
-    logToUI('Closing existing peerConnection before new request');
-    peerConnection.close();
-    peerConnection = null;
-    dataChannel = null;
+
+  logToUI('Setting up WebRTC connection');
+  try {
+    logToUI(`iceServers config: ${JSON.stringify(iceServers)}`);
+    peerConnection = new RTCPeerConnection({ iceServers });
+    logToUI('RTCPeerConnection created');
+  } catch (error) {
+    logToUI(`Error creating RTCPeerConnection: ${error.message || error}`);
+    return; // Stop uitvoering als dit faalt
   }
-  setupWebRTC(() => {
-    logToUI(`DataChannel opened, sending request for: ${fileName} readyState: ${dataChannel.readyState}`);
-    try {
-      if (dataChannel.readyState === 'open') {
-        dataChannel.send(JSON.stringify({ type: 'request', fileName }));
-      } else {
-        logToUI('DataChannel not open, cannot send request');
-      }
-    } catch (error) {
-      logToUI(`Error sending request: ${JSON.stringify(error)}`);
+
+  dataChannel = peerConnection.createDataChannel('fileTransfer');
+  logToUI('DataChannel created');
+  dataChannel.onopen = () => logToUI('DataChannel opened');
+  dataChannel.onclose = () => logToUI('DataChannel closed');
+  dataChannel.onmessage = handleDataChannelMessage;
+
+  peerConnection.onicecandidate = (event) => {
+    if (event.candidate) {
+      logToUI(`ICE candidate found: ${event.candidate.candidate}`);
+      ws.send(JSON.stringify({ type: 'signal', targetId: ownerId, signal: event.candidate }));
     }
-  });
+  };
+
+  logToUI('Creating offer');
+  peerConnection.createOffer()
+    .then((offer) => {
+      logToUI(`Offer created: ${offer.sdp}`);
+      return peerConnection.setLocalDescription(offer);
+    })
+    .then(() => {
+      logToUI(`Local description set, sending offer to target: ${ownerId}`);
+      ws.send(JSON.stringify({ type: 'signal', targetId: ownerId, signal: peerConnection.localDescription }));
+    })
+    .catch((error) => logToUI('Error creating offer: ' + error));
 }
 
 function setupWebRTC(onOpenCallback) {
