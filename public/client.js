@@ -175,39 +175,6 @@ function requestFile(ownerId, fileName) {
     }
   };
 
-  logToUI('Creating offer');
-  peerConnection.createOffer()
-    .then((offer) => {
-      logToUI(`Offer created: ${offer.sdp}`);
-      return peerConnection.setLocalDescription(offer);
-    })
-    .then(() => {
-      logToUI(`Local description set, sending offer to target: ${ownerId}`);
-      ws.send(JSON.stringify({ type: 'signal', targetId: ownerId, signal: peerConnection.localDescription }));
-    })
-    .catch((error) => logToUI('Error creating offer: ' + error));
-}
-
-  dataChannel = peerConnection.createDataChannel('fileTransfer');
-  logToUI('DataChannel created');
-  dataChannel.onopen = () => {
-    logToUI('DataChannel opened');
-    // Stuur een verzoek voor het bestand
-    const requestMessage = JSON.stringify({ type: 'request', fileName });
-    logToUI(`Sending file request: ${requestMessage}`);
-    dataChannel.send(requestMessage);
-    expectedFileName = fileName; // Stel de verwachte bestandsnaam in voor ontvangst
-  };
-  dataChannel.onclose = () => logToUI('DataChannel closed');
-  dataChannel.onmessage = handleDataChannelMessage;
-
-  peerConnection.onicecandidate = (event) => {
-    if (event.candidate) {
-      logToUI(`ICE candidate found: ${event.candidate.candidate}`);
-      ws.send(JSON.stringify({ type: 'signal', targetId: ownerId, signal: event.candidate }));
-    }
-  };
-
 function setupWebRTC(onOpenCallback) {
   logToUI('Setting up WebRTC connection');
   try {
@@ -366,25 +333,6 @@ function handleSignal(data) {
     }
   }
 }
-
-    peerConnection.setRemoteDescription(new RTCSessionDescription(signal))
-      .then(() => {
-        if (pendingCandidates.length > 0) {
-          logToUI(`Adding ${pendingCandidates.length} pending ICE candidates`);
-          pendingCandidates.forEach(candidate => {
-            peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-              .catch(error => logToUI('Error adding pending ICE candidate: ' + error));
-          });
-          pendingCandidates = [];
-        }
-        return peerConnection.createAnswer();
-      })
-      .then((answer) => peerConnection.setLocalDescription(answer))
-      .then(() => {
-        logToUI('Sending answer to: ' + fromId);
-        ws.send(JSON.stringify({ type: 'signal', targetId: fromId, signal: peerConnection.localDescription }));
-      })
-      .catch((error) => logToUI('Error handling offer: ' + error));
 
 function handleDataChannelMessage(e) {
   logToUI(`DataChannel message received, type: ${typeof e.data}`);
