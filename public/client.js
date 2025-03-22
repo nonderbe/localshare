@@ -31,7 +31,7 @@ function connectWebSocket() {
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => logToUI('WebSocket connected successfully');
-  ws.onclose = () => logToUI('WebSocket connection closed');
+  ws.onclose = (event) => logToUI(`WebSocket connection closed - Code: ${event.code}, Reason: ${event.reason}`);
   ws.onerror = (error) => logToUI('WebSocket error: ' + error);
   ws.onmessage = handleMessage;
 }
@@ -42,6 +42,7 @@ function handleMessage(event) {
   switch (data.type) {
     case 'register':
       myId = data.clientId;
+      logToUI(`Registered with clientId: ${myId}`);
       break;
     case 'update':
       updateFileList(data.deviceCount, data.sharedFiles);
@@ -73,6 +74,11 @@ function updateFileList(deviceCount, files) {
 
 function shareFiles() {
   logToUI('shareFiles() called');
+  if (!myId) {
+    logToUI('Cannot share files: not yet registered with server');
+    document.getElementById('status').textContent = 'Error: Not registered yet, please wait.';
+    return;
+  }
   const fileInput = document.getElementById('fileInput');
   const folderInput = document.getElementById('folderInput');
   logToUI(`Raw fileInput.files: ${JSON.stringify(fileInput.files)}`);
@@ -92,6 +98,7 @@ function shareFiles() {
   if (files.length > 0) {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'share', files: fileMetadata }));
+      logToUI('Share request sent to server');
       document.getElementById('status').textContent = 'Files shared!';
     } else {
       logToUI('WebSocket not open, cannot share files');
