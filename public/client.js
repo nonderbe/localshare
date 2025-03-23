@@ -44,8 +44,11 @@ document.addEventListener('DOMContentLoaded', () => {
       handleLocalFiles(files);
     });
 
-    dropArea.addEventListener('click', () => {
-      document.getElementById('fileInput').click();
+    // Klik alleen activeren als het niet in #sharedByOthers is
+    dropArea.addEventListener('click', (e) => {
+      if (!e.target.closest('#sharedByOthers')) {
+        document.getElementById('fileInput').click();
+      }
     });
   }
 
@@ -54,7 +57,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Download geselecteerde bestanden
-  document.getElementById('downloadSelected')?.addEventListener('click', () => {
+  document.getElementById('downloadSelected')?.addEventListener('click', (e) => {
+    e.stopPropagation(); // Voorkom bubbling naar dropArea
     const checkboxes = otherFilesList.querySelectorAll('input[type="checkbox"]:checked');
     checkboxes.forEach(checkbox => {
       const fileName = checkbox.name.replace('download-', '');
