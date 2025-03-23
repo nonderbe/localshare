@@ -60,8 +60,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Download geselecteerde bestanden
   document.getElementById('downloadSelected')?.addEventListener('click', (e) => {
-    e.stopPropagation(); // Voorkom bubbling naar dropArea
+    e.stopPropagation();
     const checkboxes = otherFilesList.querySelectorAll('input[type="checkbox"]:checked');
+    downloadQueue = []; // Reset de queue om duplicates te vermijden
     checkboxes.forEach(checkbox => {
       const fileName = checkbox.name.replace('download-', '');
       const fileOwner = files.find(f => f.name === fileName)?.ownerId;
@@ -162,6 +163,7 @@ function updateDeviceCount(count) {
 }
 
 let files = [];
+
 function updateFileLists(sharedFiles) {
   files = sharedFiles;
   const deviceFilesList = document.getElementById('deviceFiles');
@@ -237,7 +239,7 @@ function requestFile(ownerId, fileName) {
   console.log('requestFile called - ownerId:', ownerId, 'fileName:', fileName);
   targetId = ownerId;
   expectedFileName = fileName;
-  receivedChunks = [];
+  receivedChunks = []; // Reset voor elke nieuwe download
   totalSize = 0;
   if (peerConnection) {
     peerConnection.close();
@@ -461,7 +463,7 @@ function receiveFileWithProgress() {
 
     progressBar.style.display = 'block';
     document.getElementById('status').textContent = `Downloading ${expectedFileName}...`;
-    const progress = (receivedSize / totalSize) * 100;
+    const progress = totalSize > 0 ? (receivedSize / totalSize) * 100 : 0;
     progressFill.style.width = `${progress}%`;
 
     if (totalSize > 0 && receivedSize >= totalSize) {
@@ -476,9 +478,8 @@ function receiveFileWithProgress() {
       receivedChunks = [];
       totalSize = 0;
 
-      // Download voltooid, ga verder met de wachtrij
       isDownloading = false;
-      processDownloadQueue();
+      processDownloadQueue(); // Ga naar het volgende bestand
     }
   }
 }
