@@ -449,9 +449,13 @@ function sendFileWithProgress(file) {
 
 function receiveFileWithProgress() {
   if (receivedChunks.length > 0) {
+    const receivedSize = receivedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+    const progress = totalSize > 0 ? (receivedSize / totalSize) * 100 : 0;
     const blob = new Blob(receivedChunks);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
+    document.getElementById('progressFill').style.width = `${progress}%`;
+    document.getElementById('progressText').textContent = `${Math.round(progress)}%`;
     a.href = url;
     a.download = expectedFileName || 'downloaded_file';
     a.click();
