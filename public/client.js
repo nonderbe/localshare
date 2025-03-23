@@ -1,270 +1,375 @@
-// Globale variabelen
-const iceServers = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'turn:109.236.133.105:3478', username: 'test', credential: 'test123' }
-];
+console.log('client.js loaded successfully');
+
 let ws;
-let myId;
 let peerConnection;
 let dataChannel;
+let myId;
 let targetId;
+let sharedFilesMap = new Map();
+let pendingCandidates = [];
+let receivedChunks = [];
 let expectedFileName;
 let totalSize = 0;
-let receivedChunks = [];
-let pendingCandidates = [];
-const sharedFilesMap = new Map();
 
-function logToUI(message) {
-  console.log(message);
-  const logContainer = document.getElementById('logContainer');
-  const logEntry = document.createElement('div');
-  logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-  logContainer.appendChild(logEntry);
-  logContainer.scrollTop = logContainer.scrollHeight;
+const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const hostname = window.location.hostname;
+const serverUrl = `${protocol}//${hostname}`;
+
+async function registerDevice() {
+  document.getElementById('deviceCount').textContent = 'Connecting...';
+
+  console.log(`Attempting to connect to WebSocket at: ${serverUrl}`);
+  ws = new WebSocket(serverUrl);
+
+  ws.onopen = () => {
+    console.log('WebSocket connected successfully');
+    ws.send(JSON.stringify({ type: 'register' }));
+    updateDeviceCount(1);
+    checkFolderSupport();
+  };
+
+  ws.onerror = (error) => {
+    console.error('WebSocket error:', error);
+    document.getElementById('deviceCount').textContent = 'Error: Could not connect to server.';
+  };
+
+  ws.onclose = (event) => {
+    console.log('WebSocket closed:', event);
+    if (document.getElementById('deviceCount').textContent === 'Connecting...') {
+      document.getElementById('deviceCount').textContent = 'Error: Connection lost.';
+    }
+  };
+
+  ws.onmessage = handleMessage;
 }
 
-logToUI('client.js loaded successfully');
-
-function connectWebSocket() {
-  const wsUrl = 'wss://localshare-cj69.onrender.com';
-  logToUI(`Attempting to connect to WebSocket at: ${wsUrl}`);
-  ws = new WebSocket(wsUrl);
-
-  ws.onopen = () => logToUI('WebSocket connected successfully');
-  ws.onclose = (event) => logToUI(`WebSocket connection closed - Code: ${event.code}, Reason: ${event.reason}`);
-  ws.onerror = (error) => logToUI('WebSocket error: ' + error);
-  ws.onmessage = handleMessage;
+function checkFolderSupport() {
+  const folderInput = document.getElementById('folderInput');
+  if (!('webkitdirectory' in folderInput)) {
+    document.getElementById('fallbackMessage').style.display = 'block';
+    folderInput.style.display = 'none';
+  }
 }
 
 function handleMessage(event) {
   const data = JSON.parse(event.data);
-  logToUI(`Received from server: ${JSON.stringify(data)}`);
-  switch (data.type) {
-    case 'register':
-      myId = data.clientId;
-      logToUI(`Registered with clientId: ${myId}`);
-      break;
-    case 'update':
-      updateFileList(data.deviceCount, data.sharedFiles);
-      break;
-    case 'signal':
-      handleSignal(data);
-      break;
+  console.log('Received from server:', data);
+  if (data.type === 'register') {
+    myId = data.clientId;
+  } else if (data.type === 'update') {
+    console.log('Processing update - Device count:', data.deviceCount, 'Files:', data.sharedFiles);
+    updateDeviceCount(data.deviceCount);
+    updateFileList(data.sharedFiles);
+  } else if (data.type === 'signal') {
+    handleSignal(data);
   }
 }
 
-function updateFileList(deviceCount, files) {
-  logToUI(`Processing update - Device count: ${deviceCount} Files: ${JSON.stringify(files)}`);
-  const fileList = document.getElementById('fileList');
-  fileList.innerHTML = '';
-  logToUI(`Files received for list: ${JSON.stringify(files)}`);
+function updateDeviceCount(count) {
+  document.getElementById('deviceCount').textContent = 
+    `${count} device${count === 1 ? '' : 's'} connected`;
+}
+
+function updateFileList(files) {
+  const list = document.getElementById('fileList');
+  list.innerHTML = '';
+  console.log('Files received for list:', files);
   files.forEach(file => {
-    logToUI(`Processing file: ${file.name} Owner: ${file.ownerId} My ID: ${myId}`);
+    console.log('Processing file:', file.name, 'Owner:', file.ownerId, 'My ID:', myId);
     const li = document.createElement('li');
-    li.textContent = `${file.name} (${file.size} bytes) - Owner: ${file.ownerId}`;
+    const sizeInKB = (file.size / 1024).toFixed(2);
+    li.innerHTML = `<span>${file.name} (${sizeInKB} KB)</span>`;
     if (file.ownerId !== myId) {
-      const downloadButton = document.createElement('button');
-      downloadButton.textContent = 'Download';
-      downloadButton.onclick = () => requestFile(file.ownerId, file.name);
-      li.appendChild(downloadButton);
+      const downloadBtn = document.createElement('button');
+      downloadBtn.textContent = 'Download';
+      downloadBtn.onclick = () => requestFile(file.ownerId, file.name);
+      li.appendChild(downloadBtn);
+    } else {
+      li.innerHTML += ' (Yours)';
     }
-    fileList.appendChild(li);
+    list.appendChild(li);
   });
 }
 
 function shareFiles() {
-  logToUI('shareFiles() called');
-  if (!myId) {
-    logToUI('Cannot share files: not yet registered with server');
-    document.getElementById('status').textContent = 'Error: Not registered yet, please wait.';
-    return;
-  }
+  console.log('shareFiles() called');
   const fileInput = document.getElementById('fileInput');
   const folderInput = document.getElementById('folderInput');
-  logToUI(`Raw fileInput.files: ${JSON.stringify(fileInput.files)}`);
-  logToUI(`Raw folderInput.files: ${JSON.stringify(folderInput.files)}`);
+  console.log('Raw fileInput.files:', fileInput.files);
+  console.log('Raw folderInput.files:', folderInput.files);
   const files = Array.from(fileInput.files).concat(Array.from(folderInput.files || []));
-  logToUI(`Combined files: ${JSON.stringify(files)}`);
-  files.forEach(file => {
-    sharedFilesMap.set(file.name, file);
-    logToUI(`Added to sharedFilesMap: ${file.name}, size: ${file.size}`);
-  });
+  console.log('Combined files:', files);
+  files.forEach(file => sharedFilesMap.set(file.name, file));
   const fileMetadata = files.map(file => ({
     name: file.name,
     size: file.size,
     timestamp: Date.now()
   }));
-  logToUI(`File metadata to send: ${JSON.stringify(fileMetadata)}`);
+  console.log('File metadata to send:', fileMetadata);
   if (files.length > 0) {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'share', files: fileMetadata }));
-      logToUI('Share request sent to server');
       document.getElementById('status').textContent = 'Files shared!';
     } else {
-      logToUI('WebSocket not open, cannot share files');
+      console.error('WebSocket not open, cannot share files');
       document.getElementById('status').textContent = 'Error: Cannot share - connection lost.';
     }
   } else {
-    logToUI('No files selected to share');
+    console.log('No files selected to share');
   }
+}
+
+function stopSharing() {
+  sharedFilesMap.clear();
+  ws.send(JSON.stringify({ type: 'stopSharing' }));
+  document.getElementById('status').textContent = 'File sharing stopped.';
 }
 
 function requestFile(ownerId, fileName) {
-  logToUI(`requestFile called - ownerId: ${ownerId} fileName: ${fileName}`);
+  console.log('requestFile called - ownerId:', ownerId, 'fileName:', fileName);
   targetId = ownerId;
+  expectedFileName = fileName;
+  receivedChunks = [];
+  totalSize = 0;
+  if (peerConnection) {
+    console.log('Closing existing peerConnection before new request');
+    peerConnection.close();
+    peerConnection = null;
+    dataChannel = null;
+  }
+  setupWebRTC(() => {
+    console.log('DataChannel opened, sending request for:', fileName, 'readyState:', dataChannel.readyState);
+    try {
+      if (dataChannel.readyState === 'open') {
+        dataChannel.send(JSON.stringify({ type: 'request', fileName }));
+      } else {
+        console.error('DataChannel not open, cannot send request');
+      }
+    } catch (error) {
+      console.error('Error sending request:', error);
+    }
+  });
+}
 
-  logToUI('Setting up WebRTC connection');
+function setupWebRTC(onOpenCallback) {
+  console.log('Setting up WebRTC connection');
   try {
-    logToUI(`iceServers config: ${JSON.stringify(iceServers)}`);
-    peerConnection = new RTCPeerConnection({ iceServers });
-    logToUI('RTCPeerConnection created');
+    peerConnection = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'turn:numb.viagenie.ca:3478', username: 'webrtc@live.com', credential: 'muazkh' }
+      ]
+    });
+    console.log('RTCPeerConnection created');
   } catch (error) {
-    logToUI(`Error creating RTCPeerConnection: ${error.message || error}`);
+    console.error('Error creating RTCPeerConnection:', error);
     return;
   }
-
   dataChannel = peerConnection.createDataChannel('fileTransfer');
-  logToUI('DataChannel created');
-  dataChannel.onopen = () => {
-    logToUI('DataChannel opened');
-    const requestMessage = JSON.stringify({ type: 'request', fileName });
-    logToUI(`Sending file request: ${requestMessage}`);
-    dataChannel.send(requestMessage);
-    expectedFileName = fileName;
-  };
-  dataChannel.onclose = () => logToUI('DataChannel closed');
-  dataChannel.onmessage = handleDataChannelMessage;
+  console.log('DataChannel created');
 
-  peerConnection.onicecandidate = (event) => {
-    if (event.candidate) {
-      logToUI(`ICE candidate found: ${event.candidate.candidate}`);
-      ws.send(JSON.stringify({ type: 'signal', targetId: ownerId, signal: event.candidate }));
+  dataChannel.onopen = () => {
+    console.log('DataChannel opened');
+    document.getElementById('status').textContent = 'Connection established!';
+    if (onOpenCallback) onOpenCallback();
+  };
+  dataChannel.onmessage = handleDataChannelMessage;
+  dataChannel.onerror = (error) => console.error('DataChannel error:', error);
+  dataChannel.onclose = () => console.log('DataChannel closed');
+
+  peerConnection.onicecandidate = (e) => {
+    if (e.candidate) {
+      console.log('ICE candidate found:', e.candidate.candidate);
+      try {
+        ws.send(JSON.stringify({
+          type: 'signal',
+          targetId,
+          signal: { candidate: e.candidate },
+        }));
+        console.log('ICE candidate sent to:', targetId);
+      } catch (error) {
+        console.error('Error sending ICE candidate:', error);
+      }
+    } else {
+      console.log('ICE candidate gathering complete');
     }
   };
+  peerConnection.onconnectionstatechange = () => {
+    console.log('Connection state:', peerConnection.connectionState);
+    if (peerConnection.connectionState === 'disconnected') {
+      console.log('Connection disconnected, closing peerConnection');
+      peerConnection.close();
+      peerConnection = null;
+      dataChannel = null;
+    }
+  };
+  peerConnection.oniceconnectionstatechange = () => {
+    console.log('ICE connection state:', peerConnection.iceConnectionState);
+  };
+  peerConnection.onsignalingstatechange = () => {
+    console.log('Signaling state:', peerConnection.signalingState);
+  };
+  peerConnection.onicecandidateerror = (e) => {
+    console.error('ICE candidate error:', e.errorText, 'URL:', e.url);
+  };
 
-  logToUI('Creating offer');
+  console.log('Creating offer');
   peerConnection.createOffer()
-    .then((offer) => {
-      logToUI(`Offer created: ${offer.sdp}`);
+    .then(offer => {
+      console.log('Offer created:', offer.sdp.substring(0, 100) + '...');
       return peerConnection.setLocalDescription(offer);
     })
     .then(() => {
-      logToUI(`Local description set, sending offer to target: ${ownerId}`);
-      ws.send(JSON.stringify({ type: 'signal', targetId: ownerId, signal: peerConnection.localDescription }));
+      console.log('Local description set, sending offer to target:', targetId);
+      ws.send(JSON.stringify({
+        type: 'signal',
+        targetId,
+        signal: peerConnection.localDescription,
+      }));
     })
-    .catch((error) => logToUI('Error creating offer: ' + error));
+    .catch(error => {
+      console.error('WebRTC setup error:', error);
+    });
 }
 
 function handleSignal(data) {
-  const { fromId, signal } = data;
-  logToUI(`Received signal from: ${fromId} for target: ${myId}`);
-  
-  if (signal.type === 'offer') {
+  console.log('Received signal from:', data.fromId, 'for target:', data.targetId);
+  if (data.signal.type === 'offer') {
     if (peerConnection && peerConnection.signalingState !== 'closed') {
-      logToUI('Existing peerConnection still active, ignoring new offer');
-      return;
+      console.log('Closing existing peerConnection for new offer');
+      peerConnection.close();
+      peerConnection = null;
+      dataChannel = null;
     }
-    logToUI('Creating new RTCPeerConnection for incoming offer');
-    peerConnection = new RTCPeerConnection({ iceServers });
-    peerConnection.ondatachannel = (event) => {
-      logToUI('DataChannel received from peer');
-      dataChannel = event.channel;
-      dataChannel.onopen = () => logToUI('DataChannel opened');
-      dataChannel.onclose = () => logToUI('DataChannel closed');
-      dataChannel.onmessage = handleDataChannelMessage;
-    };
+    console.log('Creating new RTCPeerConnection for incoming offer');
+    peerConnection = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'turn:numb.viagenie.ca:3478', username: 'webrtc@live.com', credential: 'muazkh' }
+      ]
+    });
+    console.log('RTCPeerConnection created (responder)');
 
-    peerConnection.onicecandidate = (event) => {
-      if (event.candidate) {
-        logToUI(`ICE candidate found: ${event.candidate.candidate}`);
-        ws.send(JSON.stringify({ type: 'signal', targetId: fromId, signal: event.candidate }));
+    peerConnection.ondatachannel = (e) => {
+      dataChannel = e.channel;
+      console.log('Incoming DataChannel received:', e.channel.label);
+      dataChannel.onopen = () => {
+        console.log('Incoming DataChannel opened');
+        document.getElementById('status').textContent = 'Connection established!';
+      };
+      dataChannel.onmessage = handleDataChannelMessage;
+      dataChannel.onerror = (error) => console.error('Incoming DataChannel error:', error);
+      dataChannel.onclose = () => console.log('Incoming DataChannel closed');
+    };
+    peerConnection.onicecandidate = (e) => {
+      if (e.candidate) {
+        console.log('ICE candidate found (responder):', e.candidate.candidate);
+        ws.send(JSON.stringify({
+          type: 'signal',
+          targetId: data.fromId,
+          signal: { candidate: e.candidate },
+        }));
+      } else {
+        console.log('ICE candidate gathering complete (responder)');
       }
     };
+    peerConnection.onconnectionstatechange = () => {
+      console.log('Connection state (responder):', peerConnection.connectionState);
+      if (peerConnection.connectionState === 'disconnected') {
+        console.log('Connection disconnected (responder), closing peerConnection');
+        peerConnection.close();
+        peerConnection = null;
+        dataChannel = null;
+      }
+    };
+    peerConnection.oniceconnectionstatechange = () => {
+      console.log('ICE connection state (responder):', peerConnection.iceConnectionState);
+    };
+    peerConnection.onicecandidateerror = (e) => {
+      console.error('ICE candidate error (responder):', e.errorText, 'URL:', e.url);
+    };
 
-    peerConnection.setRemoteDescription(new RTCSessionDescription(signal))
+    console.log('Handling offer');
+    peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal))
       .then(() => {
-        if (pendingCandidates.length > 0) {
-          logToUI(`Adding ${pendingCandidates.length} pending ICE candidates`);
-          pendingCandidates.forEach(candidate => {
-            peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-              .catch(error => logToUI('Error adding pending ICE candidate: ' + error));
-          });
-          pendingCandidates = [];
+        console.log('Remote description set');
+        while (pendingCandidates.length > 0) {
+          const candidate = pendingCandidates.shift();
+          console.log('Adding buffered ICE candidate:', candidate);
+          peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
         }
         return peerConnection.createAnswer();
       })
-      .then((answer) => peerConnection.setLocalDescription(answer))
-      .then(() => {
-        logToUI('Sending answer to: ' + fromId);
-        ws.send(JSON.stringify({ type: 'signal', targetId: fromId, signal: peerConnection.localDescription }));
+      .then(answer => {
+        console.log('Answer created');
+        return peerConnection.setLocalDescription(answer);
       })
-      .catch((error) => logToUI('Error handling offer: ' + error));
-  } else if (signal.type === 'answer') {
-    if (peerConnection) {
-      logToUI('Setting remote description with answer from: ' + fromId);
-      peerConnection.setRemoteDescription(new RTCSessionDescription(signal))
-        .then(() => {
-          if (pendingCandidates.length > 0) {
-            logToUI(`Adding ${pendingCandidates.length} pending ICE candidates`);
-            pendingCandidates.forEach(candidate => {
-              peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-                .catch(error => logToUI('Error adding pending ICE candidate: ' + error));
-            });
-            pendingCandidates = [];
-          }
-        })
-        .catch((error) => logToUI('Error setting remote description: ' + error));
-    } else {
-      logToUI('No peerConnection exists to handle answer');
+      .then(() => {
+        console.log('Sending answer to:', data.fromId);
+        ws.send(JSON.stringify({
+          type: 'signal',
+          targetId: data.fromId,
+          signal: peerConnection.localDescription,
+        }));
+      })
+      .catch(error => console.error('Error handling offer:', error));
+  } else if (data.signal.type === 'answer') {
+    if (!peerConnection) {
+      console.error('No peerConnection exists to handle answer');
+      return;
     }
-  } else if (signal.candidate) {
-    if (peerConnection) {
-      logToUI(`Received ICE candidate: ${JSON.stringify(signal)}`);
-      const candidateObj = {
-        candidate: signal.candidate,
-        sdpMid: signal.sdpMid || '0',
-        sdpMLineIndex: signal.sdpMLineIndex !== undefined ? signal.sdpMLineIndex : 0
-      };
-      if (peerConnection.remoteDescription) {
-        peerConnection.addIceCandidate(new RTCIceCandidate(candidateObj))
-          .catch((error) => logToUI('Error adding ICE candidate: ' + error));
-      } else {
-        logToUI('Buffering ICE candidate until remoteDescription is set');
-        pendingCandidates.push(candidateObj);
-      }
+    console.log('Handling answer');
+    peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal))
+      .then(() => {
+        console.log('Remote description set for answer');
+        while (pendingCandidates.length > 0) {
+          const candidate = pendingCandidates.shift();
+          console.log('Adding buffered ICE candidate after answer:', candidate);
+          peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        }
+      })
+      .catch(error => console.error('Error handling answer:', error));
+  } else if (data.signal.candidate) {
+    console.log('Received ICE candidate:', data.signal.candidate);
+    if (!peerConnection) {
+      console.error('No peerConnection exists to add ICE candidate');
+      return;
+    }
+    if (peerConnection.remoteDescription) {
+      peerConnection.addIceCandidate(new RTCIceCandidate(data.signal.candidate))
+        .catch(error => console.error('Error adding ICE candidate:', error));
     } else {
-      logToUI('No peerConnection exists to add ICE candidate');
+      console.log('Buffering ICE candidate until remote description is set');
+      pendingCandidates.push(data.signal.candidate);
     }
   }
 }
 
 function handleDataChannelMessage(e) {
-  logToUI(`DataChannel message received, type: ${typeof e.data}`);
+  console.log('DataChannel message received, type:', typeof e.data);
   if (typeof e.data === 'string') {
     const message = JSON.parse(e.data);
-    logToUI(`Parsed message: ${JSON.stringify(message)}`);
+    console.log('Parsed message:', message);
     if (message.type === 'request') {
-      logToUI(`Received file request for: ${message.fileName}`);
-      logToUI(`sharedFilesMap contents: ${JSON.stringify([...sharedFilesMap.entries()])}`);
+      console.log('Received file request for:', message.fileName);
       const file = sharedFilesMap.get(message.fileName);
       if (file) {
-        logToUI(`Found file in sharedFilesMap: ${file.name}, size: ${file.size}`);
         sendFileWithProgress(file);
       } else {
-        logToUI(`File not found in sharedFilesMap: ${message.fileName}`);
+        console.error('File not found in sharedFilesMap:', message.fileName);
       }
     } else if (message.type === 'fileSize') {
       totalSize = message.size;
-      logToUI(`Expected file size: ${totalSize}`);
+      console.log('Expected file size:', totalSize);
     } else if (message.type === 'end') {
-      logToUI('Received end signal');
+      console.log('Received end signal');
       receiveFileWithProgress();
     }
   } else {
-    logToUI(`Received file chunk, size: ${e.data.byteLength}`);
+    console.log('Received file chunk, size:', e.data.byteLength);
     receivedChunks.push(e.data);
     const receivedSize = receivedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-    logToUI(`Total received size: ${receivedSize}`);
+    console.log('Total received size:', receivedSize);
     if (totalSize > 0 && receivedSize >= totalSize) {
       receiveFileWithProgress();
     }
@@ -272,48 +377,70 @@ function handleDataChannelMessage(e) {
 }
 
 function sendFileWithProgress(file) {
-  logToUI(`Sending file: ${file.name}, size: ${file.size}`);
+  console.log('Sending file:', file.name, 'DataChannel readyState:', dataChannel.readyState);
+  if (dataChannel.readyState !== 'open') {
+    console.error('DataChannel not open, cannot send file');
+    return;
+  }
   const chunkSize = 16384;
-  dataChannel.send(JSON.stringify({ type: 'fileSize', size: file.size }));
-  const reader = new FileReader();
-  let offset = 0;
+  file.arrayBuffer().then(buffer => {
+    const totalSize = buffer.byteLength;
+    console.log('Sending file size info:', totalSize);
+    dataChannel.send(JSON.stringify({ type: 'fileSize', size: totalSize }));
+    
+    let offset = 0;
+    const progressBar = document.getElementById('progress');
+    const progressFill = document.getElementById('progressFill');
 
-  reader.onload = (event) => {
-    if (event.target.result) {
-      dataChannel.send(event.target.result);
-      offset += event.target.result.byteLength;
-      logToUI(`Sent chunk, offset: ${offset}/${file.size}`);
-      if (offset < file.size) {
-        readSlice(offset);
+    progressBar.style.display = 'block';
+    document.getElementById('status').textContent = `Sending ${file.name}...`;
+
+    function sendNextChunk() {
+      if (offset < totalSize) {
+        if (dataChannel.readyState !== 'open') {
+          console.error('DataChannel closed during sending, aborting');
+          return;
+        }
+        const chunk = buffer.slice(offset, offset + chunkSize);
+        dataChannel.send(chunk);
+        console.log('Sent chunk, size:', chunk.byteLength, 'offset:', offset);
+        offset += chunkSize;
+        const progress = (offset / totalSize) * 100;
+        progressFill.style.width = `${progress}%`;
+        setTimeout(sendNextChunk, 10);
       } else {
+        console.log('Sending end signal');
         dataChannel.send(JSON.stringify({ type: 'end' }));
-        logToUI('File transfer complete');
+        progressBar.style.display = 'none';
+        document.getElementById('status').textContent = `Sent ${file.name}`;
+        console.log('File sending complete, total size:', totalSize);
       }
     }
-  };
-
-  const readSlice = (o) => {
-    const slice = file.slice(offset, o + chunkSize);
-    reader.readAsArrayBuffer(slice);
-  };
-
-  readSlice(0);
+    sendNextChunk();
+  }).catch(error => console.error('Error reading file buffer:', error));
 }
 
 function receiveFileWithProgress() {
-  logToUI('Processing received file');
-  const blob = new Blob(receivedChunks);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = expectedFileName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  logToUI(`File downloaded: ${expectedFileName}, size: ${blob.size}`);
-  receivedChunks = [];
-  totalSize = 0;
+  if (receivedChunks.length > 0) {
+    console.log('Processing received chunks, total chunks:', receivedChunks.length);
+    const blob = new Blob(receivedChunks);
+    const receivedSize = blob.size;
+    console.log('Combined blob size:', receivedSize);
+    if (totalSize > 0 && receivedSize >= totalSize) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = expectedFileName || 'downloaded_file';
+      a.click();
+      document.getElementById('status').textContent = 'File downloaded!';
+      document.getElementById('progress').style.display = 'none';
+      console.log('Download triggered for:', expectedFileName, 'size:', receivedSize);
+      receivedChunks = [];
+      totalSize = 0;
+    } else {
+      console.log('Waiting for more chunks or end signal');
+    }
+  }
 }
 
-connectWebSocket();
+window.onload = registerDevice;
