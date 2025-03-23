@@ -10,6 +10,8 @@ let pendingCandidates = [];
 let receivedChunks = [];
 let expectedFileName;
 let totalSize = 0;
+let downloadQueue = [];
+let isDownloading = false;
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const hostname = window.location.hostname;
@@ -64,11 +66,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const fileName = checkbox.name.replace('download-', '');
       const fileOwner = files.find(f => f.name === fileName)?.ownerId;
       if (fileOwner) {
-        requestFile(fileOwner, fileName);
+        downloadQueue.push({ ownerId: fileOwner, fileName });
       } else {
         console.error(`Owner not found for file: ${fileName}`);
       }
     });
+    processDownloadQueue();
   });
 
   // Eigen bestanden verwerken
@@ -82,6 +85,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+function processDownloadQueue() {
+  if (isDownloading || downloadQueue.length === 0) return;
+
+  isDownloading = true;
+  const { ownerId, fileName } = downloadQueue.shift();
+  requestFile(ownerId, fileName);
+}
 
 async function registerDevice() {
   document.getElementById('deviceCount').textContent = 'Connecting...';
@@ -440,8 +451,13 @@ function receiveFileWithProgress() {
     a.click();
     document.getElementById('status').textContent = 'File downloaded!';
     document.getElementById('progress').style.display = 'none';
+    console.log('Download triggered for:', expectedFileName);
     receivedChunks = [];
     totalSize = 0;
+
+    // Download voltooid, ga verder met de wachtrij
+    isDownloading = false;
+    processDownloadQueue();
   }
 }
 
