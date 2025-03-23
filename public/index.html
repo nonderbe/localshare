@@ -4,26 +4,39 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LocalShare</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    #fileList { list-style-type: none; padding: 0; }
-    #fileList li { margin: 10px 0; }
-    #progress { display: none; width: 100%; background: #ddd; height: 20px; }
-    #progressFill { width: 0; height: 100%; background: #4caf50; }
-    #logContainer { margin-top: 20px; max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; font-size: 12px; }
-  </style>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <h1>LocalShare</h1>
-  <p id="deviceCount">Connecting...</p>
-  <input type="file" id="fileInput" multiple>
-  <input type="file" id="folderInput" webkitdirectory directory multiple style="display: none;">
-  <p id="fallbackMessage" style="display: none;">Folder upload not supported. Please use individual files.</p>
-  <button onclick="shareFiles()">Share Files</button>
-  <button onclick="stopSharing()">Stop Sharing</button>
-  <p id="status"></p>
-  <div id="progress"><div id="progressFill"></div></div>
-  <ul id="fileList"></ul>
+  <div class="container">
+    <h1>LocalShare</h1>
+    <p id="deviceCount">Connecting...</p>
+    <div class="share-area">
+      <input type="file" id="fileInput" multiple>
+      <input type="file" id="folderInput" webkitdirectory directory multiple style="display: none;">
+      <p id="fallbackMessage" class="fallback" style="display: none;">Folder upload not supported. Please use individual files.</p>
+      <button class="btn-share" onclick="shareFiles()">Share Files</button>
+      <button class="btn-stop" onclick="stopSharing()">Stop Sharing</button>
+    </div>
+    <p id="status" class="status"></p>
+    <div id="progress" class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+    <ul id="fileList"></ul>
+  </div>
+
+  <!-- Nieuw drag-and-drop vak -->
+  <div class="drag-drop-container">
+    <div class="drag-drop-area" id="dragDropArea">
+      <div class="column" id="sharedByDevice">
+        <h3>Shared by this Device</h3>
+        <ul id="deviceFiles" class="file-list"></ul>
+      </div>
+      <div class="column" id="sharedByOthers">
+        <h3>Shared by Others</h3>
+        <ul id="otherFiles" class="file-list"></ul>
+      </div>
+    </div>
+    <p class="drag-text">Drag files here or click to upload</p>
+  </div>
+
   <div id="logContainer"></div>
   <script src="/client.js"></script>
 </body>
