@@ -1,212 +1,137 @@
 body {
-  font-family: Arial, sans-serif;
-  margin: 0;
-  padding: 20px;
-  background: #f0f2f5;
-}
-
-.container {
-  max-width: 1000px;
-  margin: 0 auto 20px;
-  background: white;
-  padding: 25px;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-}
-
-.service-description {
-  font-size: 16px;
-  color: #2c3e50;
-  margin: 10px 0 20px;
-  text-align: center;
-}
-
-.suggestion-link {
-  font-size: 14px;
-  margin-top: 20px;
-  text-align: center;
-}
-
-.suggestion-link a {
-  color: #3498db;
-  text-decoration: none;
-}
-
-.suggestion-link a:hover {
-  text-decoration: underline;
-}
-
-.drag-drop-container {
-  max-width: 1000px;
-  margin: 0 auto 20px;
-  background: white;
-  padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  position: relative;
-}
-
-.shared-others-container {
-  max-width: 1000px;
-  margin: 0 auto;
-  background: white;
-  padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-}
-
-.drag-drop-area {
-  display: flex;
-  justify-content: space-between;
-  min-height: 200px;
-  border: 2px dashed #bdc3c7;
-  border-radius: 8px;
-  padding: 20px;
-  background: #f9fafb;
-  flex-wrap: wrap;
-}
-
-.drag-drop-area.dragover {
-  background: #e1e1e1;
-  border-color: #3498db;
-}
-
-.column {
-  width: 100%;
-  min-width: 200px;
-}
-
-.file-list {
-  list-style: none;
+  font-family: 'Inter', sans-serif;
+  background: linear-gradient(135deg, #1A1A2E, #16213E);
+  color: #E0E0E0;
   padding: 0;
   margin: 0;
+  overflow-x: hidden;
 }
 
-.file-list li {
-  padding: 10px;
-  background: #ecf0f1;
-  margin: 8px 0;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-}
-
-.file-list li input[type="checkbox"] {
-  margin-left: 10px;
-  width: 20px;
-  height: 20px;
-  cursor: pointer;
-}
-
-.select-all-label {
-  display: flex;
-  align-items: center;
-  font-weight: 500;
-  margin-bottom: 10px;
-  cursor: pointer;
-}
-
-.select-all-label input[type="checkbox"] {
-  margin-right: 8px;
-  width: 20px;
-  height: 20px;
-}
-
-.drag-text {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: #7f8c8d;
-  pointer-events: none;
-}
-
-button {
-  padding: 10px 20px;
-  margin: 5px;
-  border: none;
-  background: #3498db;
-  color: white;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.3s;
-}
-
-button:hover {
-  background: #2980b9;
-}
-
-.btn-share {
-  padding: 10px 20px;
-  margin: 5px 0;
-}
-
-#status {
+/* Hero */
+.hero {
+  background: linear-gradient(45deg, #6C63FF, #FF6B6B);
+  padding: 60px 20px;
   text-align: center;
-  margin: 20px 0;
-  color: #2c3e50;
+  border-bottom-left-radius: 50px;
+  border-bottom-right-radius: 50px;
+}
+.hero h1 { font-size: 48px; font-weight: 700; color: white; }
+.hero p { font-size: 20px; color: rgba(255,255,255,0.9); }
+
+/* Container */
+.container {
+  max-width: 1200px;
+  margin: 40px auto;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  padding: 30px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.progress-bar {
-  width: 100%;
-  max-width: 1000px;
-  margin: 0 auto;
-  height: 20px;
-  background: #ecf0f1;
-  border-radius: 10px;
-  overflow: hidden;
-  display: none;
+/* Knoppen */
+.button-group {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+button {
+  padding: 12px 24px;
+  background: #ECEFF4;
+  color: #6C63FF;
+  border: none;
+  border-radius: 12px;
+  font-weight: 700;
+  box-shadow: 5px 5px 10px rgba(0,0,0,0.1), -5px -5px 10px rgba(255,255,255,0.5);
+  transition: all 0.3s;
+}
+button:hover {
+  box-shadow: inset 2px 2px 5px rgba(0,0,0,0.1);
+  transform: translateY(2px);
 }
 
-.progress-fill {
-  height: 100%;
-  width: 0;
-  background: #3498db;
-  transition: width 0.3s ease;
+/* Grid */
+.grid-container {
+  max-width: 1200px;
+  margin: 0 auto 40px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+}
+.drag-drop-container, .shared-others-container {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  padding: 25px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Suggestiepagina stijlen */
-form {
-  margin-top: 20px;
+/* Drag-and-Drop */
+.drag-drop-area {
+  border: 3px dashed #FF6B6B;
+  border-radius: 15px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.05);
 }
+.drag-drop-area.dragover { border-style: solid; }
 
-label {
-  font-weight: bold;
-  color: #2c3e50;
-}
-
-textarea {
-  width: 100%;
-  max-width: 600px;
-  padding: 10px;
+/* Lijsten */
+.file-list li {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 15px;
   margin: 10px 0;
-  border: 1px solid #bdc3c7;
-  border-radius: 6px;
-  resize: vertical;
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
 }
 
-@media (max-width: 600px) {
-  .drag-drop-area {
-    padding: 10px;
-  }
-  .file-list li {
-    padding: 8px;
-  }
-  .file-list li input[type="checkbox"] {
-    width: 24px;
-    height: 24px;
-  }
-  .btn-share {
-    width: 100%;
-    font-size: 16px;
-  }
-  .service-description {
-    font-size: 14px;
-  }
-  textarea {
-    max-width: 100%;
-  }
+/* Voortgangsbalk */
+.progress-bar {
+  max-width: 1200px;
+  margin: 0 auto 40px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+}
+.progress-fill {
+  background: linear-gradient(to right, #6C63FF, #FF6B6B);
+  box-shadow: 0 0 10px #6C63FF;
+  position: relative;
+}
+#progressText {
+  position: absolute;
+  right: 10px;
+  font-size: 12px;
+  color: white;
+}
+
+/* Notificatie */
+.notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 10px 20px;
+  background: #6C63FF;
+  color: white;
+  border-radius: 8px;
+  display: none;
+  animation: slideIn 0.5s;
+}
+@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+/* Footer */
+footer {
+  background: #6C63FF;
+  color: white;
+  text-align: center;
+  padding: 20px;
+  margin-top: 40px;
+}
+footer a { color: #FF6B6B; }
+
+/* Responsiviteit */
+@media (max-width: 768px) {
+  .grid-container { grid-template-columns: 1fr; }
+  .hero h1 { font-size: 36px; }
 }
