@@ -3,45 +3,50 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LocalShare</title>
+  <title>File Sharing</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="container">
-    <h1>LocalShare</h1>
-    <p id="deviceCount">Connecting...</p>
-    <div class="share-area">
-      <input type="file" id="fileInput" multiple>
-      <input type="file" id="folderInput" webkitdirectory directory multiple style="display: none;">
-      <p id="fallbackMessage" class="fallback" style="display: none;">Folder upload not supported. Please use individual files.</p>
-      <button class="btn-share" onclick="shareFiles()">Share Files</button>
-      <button class="btn-stop" onclick="stopSharing()">Stop Sharing</button>
-    </div>
-    <p id="status" class="status"></p>
-    <div id="progress" class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
-    <ul id="fileList"></ul>
+    <h1>File Sharing</h1>
+    <p id="deviceCount">0 devices connected</p>
+    <input type="file" id="fileInput" multiple style="display: none;">
+    <input type="file" id="folderInput" webkitdirectory style="display: none;">
+    <button onclick="document.getElementById('fileInput').click()">Select Files</button>
+    <button onclick="document.getElementById('folderInput').click()">Select Folder</button>
+    <button onclick="shareFiles()">Share Files</button>
+    <button onclick="stopSharing()">Stop Sharing</button>
+    <p id="fallbackMessage" style="display: none;">Your browser does not support folder uploads. Please use individual files.</p>
   </div>
 
-  <!-- Nieuw drag-and-drop vak -->
-  <div class="drag-drop-container">
-    <div class="drag-drop-area" id="dragDropArea">
+  <!-- Kader 1: Gedeeld door dit apparaat met drag-and-drop -->
+  <div class="drag-drop-container" id="deviceDragDropContainer">
+    <div class="drag-drop-area" id="deviceDragDropArea">
       <div class="column" id="sharedByDevice">
         <h3>Shared by this Device</h3>
         <ul id="deviceFiles" class="file-list"></ul>
-      </div>
-      <div class="column" id="sharedByOthers">
-        <h3>Shared by Others</h3>
-        <label class="select-all-label">
-          <input type="checkbox" id="selectAllCheckbox"> Select All
-        </label>
-        <ul id="otherFiles" class="file-list"></ul>
-        <button id="downloadSelected" class="btn-share">Download Selected</button>
       </div>
     </div>
     <p class="drag-text">Drag files here or click to upload</p>
   </div>
 
-  <div id="logContainer"></div>
-  <script src="/client.js"></script>
+  <!-- Kader 2: Gedeeld door anderen zonder drag-and-drop -->
+  <div class="shared-others-container" id="othersContainer">
+    <div class="column" id="sharedByOthers">
+      <h3>Shared by Others</h3>
+      <label class="select-all-label">
+        <input type="checkbox" id="selectAllCheckbox"> Select All
+      </label>
+      <ul id="otherFiles" class="file-list"></ul>
+      <button id="downloadSelected" class="btn-share">Download Selected</button>
+    </div>
+  </div>
+
+  <div id="status">Ready</div>
+  <div id="progress" class="progress-bar">
+    <div id="progressFill" class="progress-fill"></div>
+  </div>
+
+  <script src="client.js"></script>
 </body>
 </html>
