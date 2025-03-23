@@ -5,23 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LocalShare</title>
   <link rel="stylesheet" href="/styles.css">
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vanilla-tilt/1.7.0/vanilla-tilt.min.js"></script>
 </head>
 <body>
-  <div class="container">
+  <header class="hero">
     <h1>LocalShare</h1>
-    <p class="service-description">Share files effortlessly across your local network.</p>
+    <p>Fast. Local. Secure File Sharing.</p>
+  </header>
+
+  <div class="container">
     <p id="deviceCount">0 devices connected</p>
     <div class="button-group">
-      <button onclick="document.getElementById('fileInput').click()">SELECT FILES</button>
-      <button onclick="document.getElementById('folderInput').click()">SELECT FOLDER</button>
-      <button onclick="shareFiles()">SHARE FILES</button>
-      <button onclick="stopSharing()">STOP SHARING</button>
+      <button onclick="document.getElementById('fileInput').click()">Select Files</button>
+      <button onclick="document.getElementById('folderInput').click()">Select Folder</button>
+      <button onclick="shareFiles()">Share Files</button>
+      <button onclick="stopSharing()">Stop Sharing</button>
     </div>
     <input type="file" id="fileInput" multiple style="display: none;">
     <input type="file" id="folderInput" webkitdirectory style="display: none;">
-    <p id="fallbackMessage" style="display: none;">Your browser doesn’t support folder uploads.</p>
-    <p class="suggestion-link"><a href="/suggestions.html">Got feedback? Tell us!</a></p>
+    <p id="fallbackMessage" style="display: none;">Folders not supported.</p>
+    <p class="suggestion-link"><a href="/suggestions.html">Feedback?</a></p>
   </div>
 
   <div class="grid-container">
@@ -30,7 +34,7 @@
         <h3>Shared by You</h3>
         <ul id="deviceFiles" class="file-list"></ul>
       </div>
-      <p class="drag-text">Drop Files Here</p>
+      <p class="drag-text">Drop Here</p>
     </div>
 
     <div class="shared-others-container" id="othersContainer">
@@ -39,15 +43,22 @@
         <input type="checkbox" id="selectAllCheckbox"> Select All
       </label>
       <ul id="otherFiles" class="file-list"></ul>
-      <button id="downloadSelected" class="btn-share">DOWNLOAD SELECTED</button>
+      <button id="downloadSelected" class="btn-share">Download</button>
     </div>
   </div>
 
-  <div id="status">Ready</div>
+  <div id="status" class="notification"></div>
   <div id="progress" class="progress-bar">
-    <div id="progressFill" class="progress-fill"></div>
+    <div id="progressFill" class="progress-fill"><span id="progressText">0%</span></div>
   </div>
 
+  <footer>
+    <p>&copy; 2025 LocalShare. <a href="/suggestions.html">Suggestions</a></p>
+  </footer>
+
   <script src="/client.js"></script>
+  <script>
+    VanillaTilt.init(document.querySelectorAll(".file-list li"), { max: 15, speed: 400 });
+  </script>
 </body>
 </html>
