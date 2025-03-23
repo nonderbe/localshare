@@ -74,6 +74,14 @@ document.addEventListener('DOMContentLoaded', () => {
     processDownloadQueue();
   });
 
+  // "Select All" checkbox functionaliteit
+  document.getElementById('selectAllCheckbox')?.addEventListener('change', (e) => {
+    e.stopPropagation();
+    const isChecked = e.target.checked;
+    const checkboxes = otherFilesList.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(checkbox => checkbox.checked = isChecked);
+  });
+
   // Eigen bestanden verwerken
   function handleLocalFiles(files) {
     Array.from(files).forEach(file => {
