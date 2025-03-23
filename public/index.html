@@ -3,12 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>File Sharing</title>
+  <title>LocalShare</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="container">
-    <h1>File Sharing</h1>
+    <h1>LocalShare</h1>
+    <p class="service-description">Easily share files between your devices on the same network — no cloud required!</p>
     <p id="deviceCount">0 devices connected</p>
     <input type="file" id="fileInput" multiple style="display: none;">
     <input type="file" id="folderInput" webkitdirectory style="display: none;">
@@ -17,6 +18,7 @@
     <button onclick="shareFiles()">Share Files</button>
     <button onclick="stopSharing()">Stop Sharing</button>
     <p id="fallbackMessage" style="display: none;">Your browser does not support folder uploads. Please use individual files.</p>
+    <p class="suggestion-link"><a href="suggestions.html">Have a suggestion? Let us know!</a></p>
   </div>
 
   <!-- Kader 1: Gedeeld door dit apparaat met drag-and-drop -->
