@@ -106,12 +106,13 @@ body {
 
 .file-list li input[type="checkbox"] {
   margin-left: 10px;
-  flex-shrink: 0; /* Voorkom dat checkbox krimpt */
-  width: 20px; /* Vergroot het klikbare gebied */
-  height: 20px;
+  width: 24px;
+  height: 24px;
   cursor: pointer;
-  -webkit-appearance: checkbox; /* Forceer checkbox-stijl op mobiel */
-  touch-action: manipulation; /* Verbeter touch-respons */
+  -webkit-appearance: checkbox;
+  touch-action: manipulation;
+  position: relative;
+  z-index: 1; /* Zorgt dat checkbox boven andere elementen ligt */
 }
 
 .drag-text {
@@ -133,6 +134,13 @@ body {
   border-radius: 12px;
 }
 
+.btn-share {
+  padding: 10px 20px;
+  margin: 5px 0;
+  touch-action: manipulation; /* Verbeter touch-respons */
+  min-width: 120px; /* Groter klikbaar gebied */
+}
+
 /* Media query voor kleine schermen */
 @media (max-width: 600px) {
   .drag-drop-area {
@@ -149,9 +157,15 @@ body {
   }
 
   .file-list li input[type="checkbox"] {
-    width: 24px; /* Nog groter op mobiel */
-    height: 24px;
+    width: 30px; /* Nog groter op mobiel */
+    height: 30px;
   }
+
+  .btn-share {
+    width: 100%;
+    font-size: 16px;
+  }
+  
   .file-list li span {
     font-size: 14px; /* Kleinere tekst voor betere leesbaarheid */
   }
