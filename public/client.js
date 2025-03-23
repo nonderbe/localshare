@@ -75,11 +75,12 @@ document.addEventListener('DOMContentLoaded', () => {
     processDownloadQueue();
   });
 
-  document.getElementById('selectAll')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const checkboxes = otherFilesList.querySelectorAll('input[type="checkbox"]');
-    checkboxes.forEach(checkbox => checkbox.checked = true);
-  });
+document.getElementById('selectAllCheckbox')?.addEventListener('change', (e) => {
+  e.stopPropagation();
+  const isChecked = e.target.checked;
+  const checkboxes = otherFilesList.querySelectorAll('input[type="checkbox"]');
+  checkboxes.forEach(checkbox => checkbox.checked = isChecked);
+});
 
   otherFilesList.addEventListener('change', (e) => {
     if (e.target.type === 'checkbox') {
