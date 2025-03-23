@@ -1,42 +1,22 @@
 body {
-  font-family: 'Segoe UI', Arial, sans-serif;
+  font-family: Arial, sans-serif;
   margin: 0;
   padding: 20px;
-  background: linear-gradient(135deg, #e0eafc, #cfdef3);
-  color: #333;
+  background: #f0f2f5;
 }
 
 .container {
   max-width: 1000px;
-  margin: 0 auto 20px; /* Ruimte voor drag-drop-container */
+  margin: 0 auto 20px;
   background: white;
   padding: 25px;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
 
-/* Bestaande stijlen blijven grotendeels hetzelfde, alleen kleine aanpassingen */
-#fileList {
-  list-style: none;
-  padding: 0;
-  margin-bottom: 20px;
-}
-
-#fileList li {
-  padding: 12px;
-  background: #ecf0f1;
-  margin: 8px 0;
-  border-radius: 8px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  transition: background 0.2s;
-}
-
-/* Nieuwe stijlen voor drag-and-drop vak */
 .drag-drop-container {
   max-width: 1000px;
-  margin: 0 auto;
+  margin: 0 auto 20px; /* Afstand tot het volgende kader */
   background: white;
   padding: 20px;
   border-radius: 12px;
@@ -44,38 +24,40 @@ body {
   position: relative;
 }
 
+.shared-others-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
 .drag-drop-area {
   display: flex;
   justify-content: space-between;
-  min-height: 300px;
+  min-height: 200px; /* Verkleind voor een compacter kader */
   border: 2px dashed #bdc3c7;
   border-radius: 8px;
   padding: 20px;
   background: #f9fafb;
-  flex-wrap: wrap; /* Laat kolommen wrappen op kleine schermen */
+  flex-wrap: wrap;
 }
 
 .drag-drop-area.dragover {
-  background: #e0eafc;
+  background: #e1e1e1;
   border-color: #3498db;
 }
 
 .column {
-  width: 48%;
-  min-width: 200px; /* Zorgt voor minimale breedte */
-}
-
-.column h3 {
-  font-size: 1.2em;
-  margin: 0 0 15px;
-  color: #34495e;
+  width: 100%; /* Volledige breedte binnen eigen container */
+  min-width: 200px;
 }
 
 .file-list {
   list-style: none;
   padding: 0;
-  max-height: 250px;
-  overflow-y: auto;
+  margin: 0;
 }
 
 .file-list li {
@@ -86,59 +68,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: nowrap; /* Voorkom dat tekst en checkbox wrappen */
-  overflow-x: auto; /* Scroll horizontaal als te lang */
-  position: relative; /* Voor betere touch-interactie */
-}
-
-.file-list li:hover {
-  background: #dfe6e9;
-}
-
-.file-list li span {
-  flex-grow: 1;
-  margin-right: 10px;
-  color: #2c3e50;
-  white-space: nowrap; /* Voorkom tekstwrapping */
-  overflow: hidden;
-  text-overflow: ellipsis; /* Toon '...' bij lange namen */
+  flex-wrap: nowrap;
+  overflow-x: auto;
 }
 
 .file-list li input[type="checkbox"] {
   margin-left: 10px;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   cursor: pointer;
-  -webkit-appearance: checkbox;
-  touch-action: manipulation;
-  position: relative;
-  z-index: 1; /* Zorgt dat checkbox boven andere elementen ligt */
-}
-
-.drag-text {
-  text-align: center;
-  color: #7f8c8d;
-  font-style: italic;
-  margin-top: 10px;
-}
-
-#logContainer {
-  max-width: 1000px;
-  margin: 20px auto;
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid #ccc;
-  padding: 10px;
-  font-size: 12px;
-  background: white;
-  border-radius: 12px;
-}
-
-.btn-share {
-  padding: 10px 20px;
-  margin: 5px 0;
-  touch-action: manipulation; /* Verbeter touch-respons */
-  min-width: 120px; /* Groter klikbaar gebied */
 }
 
 .select-all-label {
@@ -148,49 +86,79 @@ body {
   margin-bottom: 10px;
   cursor: pointer;
 }
+
 .select-all-label input[type="checkbox"] {
   margin-right: 8px;
   width: 20px;
   height: 20px;
 }
+
+.drag-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #7f8c8d;
+  pointer-events: none;
+}
+
+button {
+  padding: 10px 20px;
+  margin: 5px;
+  border: none;
+  background: #3498db;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+button:hover {
+  background: #2980b9;
+}
+
+.btn-share {
+  padding: 10px 20px;
+  margin: 5px 0;
+}
+
+#status {
+  text-align: center;
+  margin: 20px 0;
+  color: #2c3e50;
+}
+
+.progress-bar {
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+  height: 20px;
+  background: #ecf0f1;
+  border-radius: 10px;
+  overflow: hidden;
+  display: none;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: #3498db;
+  transition: width 0.3s ease;
+}
+
 @media (max-width: 600px) {
-  .select-all-label input[type="checkbox"] {
+  .drag-drop-area {
+    padding: 10px;
+  }
+  .file-list li {
+    padding: 8px;
+  }
+  .file-list li input[type="checkbox"] {
     width: 24px;
     height: 24px;
   }
-}
-
-/* Media query voor kleine schermen */
-@media (max-width: 600px) {
-  .drag-drop-area {
-    flex-direction: column; /* Stapel kolommen verticaal */
-  }
-
-  .column {
-    width: 100%; /* Volle breedte op kleine schermen */
-    margin-bottom: 20px;
-  }
-
-  .file-list li {
-    padding: 8px; /* Iets kleiner op mobiel */
-  }
-
-  .file-list li input[type="checkbox"] {
-    width: 30px; /* Nog groter op mobiel */
-    height: 30px;
-  }
-
   .btn-share {
     width: 100%;
     font-size: 16px;
-  }
-  
-  .file-list li span {
-    font-size: 14px; /* Kleinere tekst voor betere leesbaarheid */
-  }
-
-  #downloadSelected {
-    width: 100%; /* Knop volle breedte */
-    margin-top: 10px;
   }
 }
