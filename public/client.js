@@ -53,7 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-
+  
   document.getElementById('fileInput').addEventListener('change', (e) => {
     handleLocalFiles(e.target.files);
   });
@@ -74,6 +74,13 @@ document.addEventListener('DOMContentLoaded', () => {
     processDownloadQueue();
   });
 
+  document.getElementById('selectAll')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const checkboxes = otherFilesList.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(checkbox => checkbox.checked = true);
+  });
+  
+  
   // Eigen bestanden verwerken
   function handleLocalFiles(files) {
     Array.from(files).forEach(file => {
@@ -443,21 +450,31 @@ function sendFileWithProgress(file) {
 
 function receiveFileWithProgress() {
   if (receivedChunks.length > 0) {
-    const blob = new Blob(receivedChunks);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = expectedFileName || 'downloaded_file';
-    a.click();
-    document.getElementById('status').textContent = 'File downloaded!';
-    document.getElementById('progress').style.display = 'none';
-    console.log('Download triggered for:', expectedFileName);
-    receivedChunks = [];
-    totalSize = 0;
+    const receivedSize = receivedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+    const progressBar = document.getElementById('progress');
+    const progressFill = document.getElementById('progressFill');
 
-    // Download voltooid, ga verder met de wachtrij
-    isDownloading = false;
-    processDownloadQueue();
+    progressBar.style.display = 'block';
+    document.getElementById('status').textContent = `Downloading ${expectedFileName}...`;
+    const progress = (receivedSize / totalSize) * 100;
+    progressFill.style.width = `${progress}%`;
+
+    if (totalSize > 0 && receivedSize >= totalSize) {
+      const blob = new Blob(receivedChunks);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = expectedFileName || 'downloaded_file';
+      a.click();
+      document.getElementById('status').textContent = 'File downloaded!';
+      progressBar.style.display = 'none';
+      receivedChunks = [];
+      totalSize = 0;
+
+      // Download voltooid, ga verder met de wachtrij
+      isDownloading = false;
+      processDownloadQueue();
+    }
   }
 }
 
