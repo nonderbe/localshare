@@ -14,9 +14,31 @@ body {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
 
+.service-description {
+  font-size: 16px;
+  color: #2c3e50;
+  margin: 10px 0 20px;
+  text-align: center;
+}
+
+.suggestion-link {
+  font-size: 14px;
+  margin-top: 20px;
+  text-align: center;
+}
+
+.suggestion-link a {
+  color: #3498db;
+  text-decoration: none;
+}
+
+.suggestion-link a:hover {
+  text-decoration: underline;
+}
+
 .drag-drop-container {
   max-width: 1000px;
-  margin: 0 auto 20px; /* Afstand tot het volgende kader */
+  margin: 0 auto 20px;
   background: white;
   padding: 20px;
   border-radius: 12px;
@@ -36,7 +58,7 @@ body {
 .drag-drop-area {
   display: flex;
   justify-content: space-between;
-  min-height: 200px; /* Verkleind voor een compacter kader */
+  min-height: 200px;
   border: 2px dashed #bdc3c7;
   border-radius: 8px;
   padding: 20px;
@@ -50,7 +72,7 @@ body {
 }
 
 .column {
-  width: 100%; /* Volledige breedte binnen eigen container */
+  width: 100%;
   min-width: 200px;
 }
 
@@ -146,6 +168,26 @@ button:hover {
   transition: width 0.3s ease;
 }
 
+/* Suggestiepagina stijlen */
+form {
+  margin-top: 20px;
+}
+
+label {
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+textarea {
+  width: 100%;
+  max-width: 600px;
+  padding: 10px;
+  margin: 10px 0;
+  border: 1px solid #bdc3c7;
+  border-radius: 6px;
+  resize: vertical;
+}
+
 @media (max-width: 600px) {
   .drag-drop-area {
     padding: 10px;
@@ -160,5 +202,11 @@ button:hover {
   .btn-share {
     width: 100%;
     font-size: 16px;
+  }
+  .service-description {
+    font-size: 14px;
+  }
+  textarea {
+    max-width: 100%;
   }
 }
