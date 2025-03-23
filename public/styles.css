@@ -52,6 +52,7 @@ body {
   border-radius: 8px;
   padding: 20px;
   background: #f9fafb;
+  flex-wrap: wrap; /* Laat kolommen wrappen op kleine schermen */
 }
 
 .drag-drop-area.dragover {
@@ -61,6 +62,7 @@ body {
 
 .column {
   width: 48%;
+  min-width: 200px; /* Zorgt voor minimale breedte */
 }
 
 .column h3 {
@@ -84,6 +86,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: nowrap; /* Voorkom dat tekst en checkbox wrappen */
+  overflow-x: auto; /* Scroll horizontaal als te lang */
 }
 
 .file-list li:hover {
@@ -94,10 +98,14 @@ body {
   flex-grow: 1;
   margin-right: 10px;
   color: #2c3e50;
+  white-space: nowrap; /* Voorkom tekstwrapping */
+  overflow: hidden;
+  text-overflow: ellipsis; /* Toon '...' bij lange namen */
 }
 
 .file-list li input[type="checkbox"] {
   margin-left: 10px;
+  flex-shrink: 0; /* Voorkom dat checkbox krimpt */
 }
 
 .drag-text {
@@ -117,4 +125,29 @@ body {
   font-size: 12px;
   background: white;
   border-radius: 12px;
+}
+
+/* Media query voor kleine schermen */
+@media (max-width: 600px) {
+  .drag-drop-area {
+    flex-direction: column; /* Stapel kolommen verticaal */
+  }
+
+  .column {
+    width: 100%; /* Volle breedte op kleine schermen */
+    margin-bottom: 20px;
+  }
+
+  .file-list li {
+    padding: 8px; /* Iets kleiner op mobiel */
+  }
+
+  .file-list li span {
+    font-size: 14px; /* Kleinere tekst voor betere leesbaarheid */
+  }
+
+  #downloadSelected {
+    width: 100%; /* Knop volle breedte */
+    margin-top: 10px;
+  }
 }
