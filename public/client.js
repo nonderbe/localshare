@@ -18,18 +18,18 @@ const hostname = window.location.hostname;
 const serverUrl = `${protocol}//${hostname}`;
 
 document.addEventListener('DOMContentLoaded', () => {
-  const dropArea = document.getElementById('dragDropArea');
+  const deviceDragDropArea = document.getElementById('deviceDragDropArea'); // Nieuw doel voor drag-and-drop
   const deviceFilesList = document.getElementById('deviceFiles');
   const otherFilesList = document.getElementById('otherFiles');
 
   // Mobiele optimalisatie: schakel drag-and-drop uit op touch-apparaten
   if ('ontouchstart' in window || navigator.maxTouchPoints) {
-    dropArea.style.pointerEvents = 'none';
+    deviceDragDropArea.style.pointerEvents = 'none';
     document.querySelector('.drag-text').textContent = 'Select files using the button above';
   } else {
-    // Drag-and-drop functionaliteit alleen voor niet-touch apparaten
+    // Drag-and-drop functionaliteit alleen voor #deviceDragDropArea
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-      dropArea.addEventListener(eventName, preventDefaults, false);
+      deviceDragDropArea.addEventListener(eventName, preventDefaults, false);
     });
 
     function preventDefaults(e) {
@@ -37,20 +37,18 @@ document.addEventListener('DOMContentLoaded', () => {
       e.stopPropagation();
     }
 
-    dropArea.addEventListener('dragenter', () => dropArea.classList.add('dragover'));
-    dropArea.addEventListener('dragover', () => dropArea.classList.add('dragover'));
-    dropArea.addEventListener('dragleave', () => dropArea.classList.remove('dragover'));
-    dropArea.addEventListener('drop', (e) => {
-      dropArea.classList.remove('dragover');
+    deviceDragDropArea.addEventListener('dragenter', () => deviceDragDropArea.classList.add('dragover'));
+    deviceDragDropArea.addEventListener('dragover', () => deviceDragDropArea.classList.add('dragover'));
+    deviceDragDropArea.addEventListener('dragleave', () => deviceDragDropArea.classList.remove('dragover'));
+    deviceDragDropArea.addEventListener('drop', (e) => {
+      deviceDragDropArea.classList.remove('dragover');
       const files = e.dataTransfer.files;
       handleLocalFiles(files);
     });
 
-    // Klik alleen activeren als het niet in #sharedByOthers is
-    dropArea.addEventListener('click', (e) => {
-      if (!e.target.closest('#sharedByOthers')) {
-        document.getElementById('fileInput').click();
-      }
+    // Klik alleen activeren op #deviceDragDropArea
+    deviceDragDropArea.addEventListener('click', (e) => {
+      document.getElementById('fileInput').click();
     });
   }
 
@@ -60,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Download geselecteerde bestanden
   document.getElementById('downloadSelected')?.addEventListener('click', (e) => {
-    e.stopPropagation(); // Voorkom bubbling naar dropArea
+    e.stopPropagation();
     const checkboxes = otherFilesList.querySelectorAll('input[type="checkbox"]:checked');
     checkboxes.forEach(checkbox => {
       const fileName = checkbox.name.replace('download-', '');
