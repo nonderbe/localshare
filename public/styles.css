@@ -88,6 +88,7 @@ body {
   justify-content: space-between;
   flex-wrap: nowrap; /* Voorkom dat tekst en checkbox wrappen */
   overflow-x: auto; /* Scroll horizontaal als te lang */
+  position: relative; /* Voor betere touch-interactie */
 }
 
 .file-list li:hover {
@@ -106,6 +107,11 @@ body {
 .file-list li input[type="checkbox"] {
   margin-left: 10px;
   flex-shrink: 0; /* Voorkom dat checkbox krimpt */
+  width: 20px; /* Vergroot het klikbare gebied */
+  height: 20px;
+  cursor: pointer;
+  -webkit-appearance: checkbox; /* Forceer checkbox-stijl op mobiel */
+  touch-action: manipulation; /* Verbeter touch-respons */
 }
 
 .drag-text {
@@ -142,6 +148,10 @@ body {
     padding: 8px; /* Iets kleiner op mobiel */
   }
 
+  .file-list li input[type="checkbox"] {
+    width: 24px; /* Nog groter op mobiel */
+    height: 24px;
+  }
   .file-list li span {
     font-size: 14px; /* Kleinere tekst voor betere leesbaarheid */
   }
