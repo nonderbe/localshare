@@ -79,7 +79,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const checkboxes = otherFilesList.querySelectorAll('input[type="checkbox"]');
     checkboxes.forEach(checkbox => checkbox.checked = true);
   });
-  
+
+  otherFilesList.addEventListener('change', (e) => {
+    if (e.target.type === 'checkbox') {
+      console.log(`Checkbox ${e.target.name} changed to ${e.target.checked}`);
+    }
+  });
   
   // Eigen bestanden verwerken
   function handleLocalFiles(files) {
