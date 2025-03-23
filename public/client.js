@@ -15,6 +15,60 @@ const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const hostname = window.location.hostname;
 const serverUrl = `${protocol}//${hostname}`;
 
+document.addEventListener('DOMContentLoaded', () => {
+  const dropArea = document.getElementById('dragDropArea');
+  const deviceFilesList = document.getElementById('deviceFiles');
+
+  // Voorkom standaardgedrag voor drag-events
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    dropArea.addEventListener(eventName, preventDefaults, false);
+  });
+
+  function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  // Highlight bij dragover
+  dropArea.addEventListener('dragenter', () => {
+    dropArea.classList.add('dragover');
+  });
+
+  dropArea.addEventListener('dragover', () => {
+    dropArea.classList.add('dragover');
+  });
+
+  // Verwijder highlight bij dragleave
+  dropArea.addEventListener('dragleave', () => {
+    dropArea.classList.remove('dragover');
+  });
+
+  // Verwerk gedropte bestanden
+  dropArea.addEventListener('drop', (e) => {
+    dropArea.classList.remove('dragover');
+    const files = e.dataTransfer.files;
+    handleFiles(files);
+  });
+
+  // Bestanden weergeven in de linker kolom
+  function handleFiles(files) {
+    Array.from(files).forEach(file => {
+      const listItem = document.createElement('li');
+      listItem.innerHTML = `<span>${file.name}</span>`;
+      deviceFilesList.appendChild(listItem);
+    });
+  }
+
+  // Optioneel: klikfunctionaliteit om bestanden te selecteren
+  dropArea.addEventListener('click', () => {
+    document.getElementById('fileInput').click();
+  });
+
+  document.getElementById('fileInput').addEventListener('change', (e) => {
+    handleFiles(e.target.files);
+  });
+});
+
 async function registerDevice() {
   document.getElementById('deviceCount').textContent = 'Connecting...';
 
