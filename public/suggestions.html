@@ -4,19 +4,44 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LocalShare - Suggestions</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <div class="container">
     <h1>LocalShare Suggestions</h1>
-    <p>We’d love to hear your ideas to improve LocalShare! Submit your suggestion below, and it will be emailed to us.</p>
-    <form id="suggestionForm" action="mailto:niels.onderbeke@gmail.com" method="POST" enctype="text/plain">
+    <p>We’d love to hear your ideas to improve LocalShare! Submit your suggestion below.</p>
+    <form id="suggestionForm" method="POST">
       <label for="suggestion">Your Suggestion:</label><br>
-      <textarea id="suggestion" name="body" rows="5" placeholder="Type your suggestion here..." required></textarea><br>
-      <input type="hidden" name="subject" value="[LocalShare] User Suggestion">
+      <textarea id="suggestion" name="suggestion" rows="5" placeholder="Type your suggestion here..." required></textarea><br>
       <button type="submit">Submit Suggestion</button>
     </form>
-    <p><a href="index.html">Back to LocalShare</a></p>
+    <p><a href="/index.html">Back to LocalShare</a></p>
   </div>
+  <script>
+    document.getElementById('suggestionForm').addEventListener('submit', function(event) {
+      event.preventDefault();
+      const formData = new FormData(this);
+      const suggestion = formData.get('suggestion');
+
+      fetch('/submit-suggestion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suggestion })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.error) {
+          alert('Error: ' + data.error);
+        } else {
+          alert('Thank you for your suggestion! Returning to the main page.');
+          window.location.href = '/index.html';
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred. Please try again later.');
+      });
+    });
+  </script>
 </body>
 </html>
