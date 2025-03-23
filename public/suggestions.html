@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LocalShare - Suggestions</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>LocalShare Suggestions</h1>
+    <p>We’d love to hear your ideas to improve LocalShare! Submit your suggestion below, and it will be emailed to us.</p>
+    <form id="suggestionForm" action="mailto:niels.onderbeke@gmail.com" method="POST" enctype="text/plain">
+      <label for="suggestion">Your Suggestion:</label><br>
+      <textarea id="suggestion" name="body" rows="5" placeholder="Type your suggestion here..." required></textarea><br>
+      <input type="hidden" name="subject" value="[LocalShare] User Suggestion">
+      <button type="submit">Submit Suggestion</button>
+    </form>
+    <p><a href="index.html">Back to LocalShare</a></p>
+  </div>
+</body>
+</html>
