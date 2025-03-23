@@ -141,6 +141,25 @@ body {
   min-width: 120px; /* Groter klikbaar gebied */
 }
 
+.select-all-label {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+.select-all-label input[type="checkbox"] {
+  margin-right: 8px;
+  width: 20px;
+  height: 20px;
+}
+@media (max-width: 600px) {
+  .select-all-label input[type="checkbox"] {
+    width: 24px;
+    height: 24px;
+  }
+}
+
 /* Media query voor kleine schermen */
 @media (max-width: 600px) {
   .drag-drop-area {
