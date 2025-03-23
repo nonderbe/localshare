@@ -2,6 +2,7 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 const path = require('path');
 const fs = require('fs');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const port = process.env.PORT || 10000;
@@ -12,7 +13,9 @@ if (!fs.existsSync(publicPath)) {
   process.exit(1);
 }
 
+// Middleware voor statische bestanden en JSON-parsing
 app.use(express.static(publicPath));
+app.use(express.json());
 
 const server = app.listen(port, () => {
   console.log(`Server running on port ${port}`);
@@ -105,3 +108,37 @@ function broadcastUpdate() {
     }
   });
 }
+
+// Nodemailer configuratie met omgevingsvariabelen
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER, // Gezet via Render omgevingsvariabelen
+    pass: process.env.EMAIL_PASS  // Gezet via Render omgevingsvariabelen
+  }
+});
+
+// POST-route voor suggesties
+app.post('/submit-suggestion', (req, res) => {
+  const { suggestion } = req.body;
+
+  if (!suggestion) {
+    return res.status(400).json({ error: 'Suggestion is required' });
+  }
+
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: 'niels.onderbeke@gmail.com',
+    subject: '[LocalShare] User Suggestion',
+    text: suggestion
+  };
+
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      console.error('Error sending email:', error);
+      return res.status(500).json({ error: 'Failed to send suggestion' });
+    }
+    console.log('Email sent:', info.response);
+    res.status(200).json({ message: 'Suggestion sent successfully' });
+  });
+});
