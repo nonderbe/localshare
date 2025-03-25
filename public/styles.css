@@ -120,6 +120,64 @@ button:hover {
 }
 @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
 
+/* Navigatie */
+.page-links {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+  gap: 25px;
+}
+.page-links a {
+  color: #FF6B6B;
+  text-decoration: none;
+  font-weight: 700;
+  transition: color 0.3s;
+}
+.page-links a:hover { color: #6C63FF; }
+
+/* About & FAQ Containers */
+.about-container, .faq-container {
+  max-width: 800px;
+  margin: 40px auto;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  padding: 30px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.about-container h2, .faq-container h2 {
+  font-size: 28px;
+  color: #FF6B6B;
+  margin-bottom: 20px;
+}
+.about-container p { font-size: 16px; line-height: 1.6; margin-bottom: 20px; }
+
+/* FAQ Items */
+.faq-item { margin-bottom: 30px; }
+.faq-item h3 {
+  font-size: 20px;
+  color: #6C63FF;
+  margin-bottom: 10px;
+}
+.faq-item p { font-size: 16px; line-height: 1.6; }
+
+/* Terug-knop */
+.btn-back {
+  display: inline-block;
+  padding: 12px 24px;
+  background: #ECEFF4;
+  color: #6C63FF;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 700;
+  box-shadow: 5px 5px 10px rgba(0,0,0,0.1), -5px -5px 10px rgba(255,255,255,0.5);
+  transition: all 0.3s;
+}
+.btn-back:hover {
+  box-shadow: inset 2px 2px 5px rgba(0,0,0,0.1);
+  transform: translateY(2px);
+}
+
 /* Footer */
 footer {
   background: #6C63FF;
@@ -134,4 +192,6 @@ footer a { color: #FF6B6B; }
 @media (max-width: 768px) {
   .grid-container { grid-template-columns: 1fr; }
   .hero h1 { font-size: 36px; }
+  .about-container, .faq-container { padding: 20px; }
+  .page-links { flex-direction: column; align-items: center; gap: 15px; }
 }
