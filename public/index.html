@@ -18,6 +18,7 @@
 
   <div class="container">
     <p id="deviceCount">0 devices connected</p>
+    <p>Welcome to LocalShare! Connect devices on your local network to start sharing files quickly and securely. No internet required.</p>
     <div class="button-group">
       <button onclick="document.getElementById('fileInput').click()">Select Files</button>
       <button onclick="document.getElementById('folderInput').click()">Select Folder</button>
@@ -38,9 +39,11 @@
     <div class="drag-drop-container" id="deviceDragDropContainer">
       <div class="drag-drop-area" id="deviceDragDropArea">
         <h3>Shared by You</h3>
-        <ul id="deviceFiles" class="file-list"></ul>
+        <ul id="deviceFiles" class="file-list">
+          <li>No files shared yet. Select files above to start.</li>
+        </ul>
       </div>
-      <p class="drag-text">Drop Here</p>
+      <p class="drag-text">Select files using the button above</p>
     </div>
 
     <div class="shared-others-container" id="othersContainer">
@@ -48,7 +51,9 @@
       <label class="select-all-label">
         <input type="checkbox" id="selectAllCheckbox"> Select All
       </label>
-      <ul id="otherFiles" class="file-list"></ul>
+      <ul id="otherFiles" class="file-list">
+        <li>No files available yet. Connect another device to see shared files.</li>
+      </ul>
       <button id="downloadSelected" class="btn-share">Download</button>
     </div>
   </div>
@@ -59,7 +64,7 @@
   </div>
 
   <footer>
-    <p>&copy; 2025 LocalShare. <a href="/suggestions.html">Suggestions</a></p>
+    <p>© 2025 LocalShare. <a href="/suggestions.html">Suggestions</a></p>
   </footer>
 
   <script src="/client.js"></script>
