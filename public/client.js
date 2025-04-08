@@ -115,13 +115,13 @@ async function registerDevice() {
 
   ws.onerror = (error) => {
     console.error('WebSocket error:', error);
-    document.getElementById('deviceCount').textContent = 'Error: Could not connect to server.';
+    document.getElementById('deviceCount').textContent = 'Failed to connect. Please refresh the page.';
   };
 
   ws.onclose = (event) => {
     console.log('WebSocket closed:', event);
-    if (document.getElementById('deviceCount').textContent === 'Connecting...') {
-      document.getElementById('deviceCount').textContent = 'Error: Connection lost.';
+    document.getElementById('deviceCount').textContent = 'Connection lost. Reconnecting...';
+    setTimeout(connectWebSocket, 2000); // Probeer opnieuw na 2 seconden
     }
   };
 
@@ -155,37 +155,50 @@ function updateDeviceCount(count) {
     `${count} device${count === 1 ? '' : 's'} connected`;
 }
 
-let files = [];
-function updateFileLists(sharedFiles) {
+let files = [];function updateFileLists(sharedFiles) {
   files = sharedFiles;
   const deviceFilesList = document.getElementById('deviceFiles');
   const otherFilesList = document.getElementById('otherFiles');
-  
+
   // Eigen bestanden bijwerken
   deviceFilesList.innerHTML = '';
   const localFiles = Array.from(sharedFilesMap.values())
-    .filter(f => f.ownerId === myId)
+    .filter(f => f.ownerId === clientId)
     .map(f => f.file);
-  localFiles.forEach(file => {
+  if (localFiles.length === 0 && sharedFiles.length === 0) {
     const li = document.createElement('li');
-    li.innerHTML = `<span>${file.name}</span>`;
+    li.textContent = 'No files shared yet. Select files above to start.';
     deviceFilesList.appendChild(li);
-  });
+  } else {
+    localFiles.forEach(file => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span>${file.name}</span>`;
+      deviceFilesList.appendChild(li);
+    });
+  }
 
   // Bestanden van anderen bijwerken
   otherFilesList.innerHTML = '';
-  sharedFiles.forEach(file => {
-    if (file.ownerId !== myId) {
-      const li = document.createElement('li');
-      const sizeInKB = (file.size / 1024).toFixed(2);
-      li.innerHTML = `<span>${file.name} (${sizeInKB} KB)</span><input type="checkbox" name="download-${file.name}">`;
-      otherFilesList.appendChild(li);
-      sharedFilesMap.set(file.name, { ...file, ownerId: file.ownerId });
-    }
-  });
+  const otherFilesExist = sharedFiles.some(file => file.ownerId !== clientId);
+  if (!otherFilesExist && sharedFiles.length === 0) {
+    const li = document.createElement('li');
+    li.textContent = 'No files available yet. Connect another device to see shared files.';
+    otherFilesList.appendChild(li);
+  } else {
+    sharedFiles.forEach(file => {
+      if (file.ownerId !== clientId) {
+        const li = document.createElement('li');
+        const sizeInKB = (file.size / 1024).toFixed(2);
+        li.innerHTML = `<span>${file.name} (${sizeInKB} KB)</span><input type="checkbox" name="download-${file.name}">`;
+        otherFilesList.appendChild(li);
+        sharedFilesMap.set(file.name, { ...file, ownerId: file.ownerId });
+      }
+    });
+  }
 
-  // Verberg de oude #fileList
-  document.getElementById('fileList').style.display = 'none';
+  // Verberg de oude #fileList (indien aanwezig)
+  const fileList = document.getElementById('fileList');
+  if (fileList) fileList.style.display = 'none';
 }
 
 function shareFiles() {
