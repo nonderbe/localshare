@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LocalShare</title>
-  <meta name="description" content="Share files quickly and securely across your local network with LocalShare. No cloud required!">
-  <meta name="keywords" content="file sharing, local network, LocalShare, secure file transfer">
+  <title>LocalShare - Fast Local File Sharing</title>
+  <meta name="description" content="Share files quickly and securely across your local network with LocalShare. No cloud required! Discover a faster, safer way to transfer files between devices.">
+  <meta name="keywords" content="file sharing, local network, LocalShare, secure file transfer, peer-to-peer, no cloud">
   <link rel="stylesheet" href="/styles.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/vanilla-tilt/1.7.0/vanilla-tilt.min.js"></script>
@@ -17,8 +17,12 @@
   </header>
 
   <div class="container">
+    <section class="intro">
+      <h2>Share Files Locally with Ease</h2>
+      <p>LocalShare lets you transfer files directly between devices on your local network, without the need for cloud storage. Whether you're at home, in the office, or on a shared Wi-Fi, enjoy fast and secure file sharing without uploading your data to the internet. Get started by connecting your devices below!</p>
+    </section>
+
     <p id="deviceCount">0 devices connected</p>
-    <p>Welcome to LocalShare! Connect devices on your local network to start sharing files quickly and securely. No internet required.</p>
     <div class="button-group">
       <button onclick="document.getElementById('fileInput').click()">Select Files</button>
       <button onclick="document.getElementById('folderInput').click()">Select Folder</button>
@@ -28,7 +32,6 @@
     <input type="file" id="fileInput" multiple style="display: none;">
     <input type="file" id="folderInput" webkitdirectory style="display: none;">
     <p id="fallbackMessage" style="display: none;">Folders not supported.</p>
-    <!-- Verwijderd: <nav class="page-links"> van hier -->
   </div>
 
   <div class="grid-container">
