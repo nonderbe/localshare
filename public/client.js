@@ -14,8 +14,9 @@ let downloadQueue = [];
 let isDownloading = false;
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const hostname = window.location.hostname || 'localhost'; // Fallback naar localhost voor dev
-const serverUrl = `${protocol}//${hostname}${window.location.port ? ':' + window.location.port : ''}`;
+const hostname = window.location.hostname || 'localhost';
+const port = window.location.port || (protocol === 'wss:' ? '443' : '80');
+const serverUrl = `${protocol}//${hostname}:${port}`;
 
 document.addEventListener('DOMContentLoaded', () => {
   const deviceDragDropArea = document.getElementById('deviceDragDropArea');
@@ -93,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function showNotification(message, duration = 3000) {
   const status = document.getElementById('status');
+  if (!status) return; // Voorkom fouten als element ontbreekt
   status.textContent = message;
   status.style.display = 'block';
   setTimeout(() => {
@@ -109,6 +111,7 @@ function updateProgress(percentage, message) {
   const progressFill = document.getElementById('progressFill');
   const progressText = document.getElementById('progressText');
   const progressMessage = document.getElementById('progressMessage');
+  if (!progress || !progressFill || !progressText || !progressMessage) return; // Voorkom fouten
 
   progress.style.display = 'block';
   progressFill.style.width = `${percentage}%`;
@@ -144,31 +147,38 @@ async function registerDevice() {
 
   ws.onerror = (error) => {
     console.error('WebSocket error:', error);
-    showNotification('Failed to connect. Please refresh the page.', 5000);
+    showNotification('Failed to connect to server. Please refresh.', 5000);
     document.getElementById('deviceCount').textContent = 'Failed to connect';
   };
 
   ws.onclose = (event) => {
     console.log('WebSocket closed:', event);
     showNotification('Connection lost. Reconnecting...', 5000);
-    document.getElementById('deviceCount').textContent = 'Connection lost. Reconnecting...';
+    document.getElementById('deviceCount').textContent = 'Connection lost';
     setTimeout(registerDevice, 2000);
   };
 
-  ws.onmessage = handleMessage;
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      console.log('Received from server:', data);
+      handleMessage(data);
+    } catch (error) {
+      console.error('Error parsing WebSocket message:', error);
+      showNotification('Invalid server message received.', 3000);
+    }
+  };
 }
 
 function checkFolderSupport() {
   const folderInput = document.getElementById('folderInput');
-  if (!('webkitdirectory' in folderInput)) {
-    document.getElementById('fallbackMessage').style.display = 'block';
+  if (!folderInput || !('webkitdirectory' in folderInput)) {
+    document.getElementById('fallbackMessage')?.style.display = 'block';
     folderInput.style.display = 'none';
   }
 }
 
-function handleMessage(event) {
-  const data = JSON.parse(event.data);
-  console.log('Received from server:', data);
+function handleMessage(data) {
   if (data.type === 'register') {
     myId = data.clientId;
     console.log('Registered with ID:', myId);
@@ -182,8 +192,10 @@ function handleMessage(event) {
 }
 
 function updateDeviceCount(count) {
-  document.getElementById('deviceCount').textContent = 
-    `${count} device${count === 1 ? '' : 's'} connected`;
+  const deviceCountElement = document.getElementById('deviceCount');
+  if (deviceCountElement) {
+    deviceCountElement.textContent = `${count} device${count === 1 ? '' : 's'} connected`;
+  }
 }
 
 let files = [];
@@ -191,6 +203,8 @@ function updateFileLists(sharedFiles) {
   files = sharedFiles || [];
   const deviceFilesList = document.getElementById('deviceFiles');
   const otherFilesList = document.getElementById('otherFiles');
+
+  if (!deviceFilesList || !otherFilesList) return;
 
   deviceFilesList.innerHTML = '';
   const localFiles = Array.from(sharedFilesMap.values())
@@ -227,9 +241,6 @@ function updateFileLists(sharedFiles) {
       }
     });
   }
-
-  const fileList = document.getElementById('fileList');
-  if (fileList) fileList.style.display = 'none';
 }
 
 function shareFiles() {
