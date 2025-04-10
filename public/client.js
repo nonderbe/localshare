@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadQueue.push({ ownerId: fileOwner, fileName });
       } else {
         console.error(`Owner not found for file: ${fileName}`);
+        showNotification(`Error: Owner not found for ${fileName}.`, 2000);
       }
     });
     processDownloadQueue();
@@ -117,7 +118,7 @@ function updateProgress(percentage, message) {
   if (percentage >= 100) {
     setTimeout(() => {
       progress.style.display = 'none';
-    }, 1000); // Verberg na 1 seconde bij voltooiing
+    }, 1000);
   }
 }
 
@@ -138,18 +139,20 @@ async function registerDevice() {
   ws.onopen = () => {
     console.log('WebSocket connected successfully');
     ws.send(JSON.stringify({ type: 'register' }));
-    updateDeviceCount(1);
+    // Wacht op server-update in plaats van direct 1 te zetten
     checkFolderSupport();
   };
 
   ws.onerror = (error) => {
     console.error('WebSocket error:', error);
     showNotification('Failed to connect. Please refresh the page.', 5000);
+    document.getElementById('deviceCount').textContent = 'Failed to connect';
   };
 
   ws.onclose = (event) => {
     console.log('WebSocket closed:', event);
     showNotification('Connection lost. Reconnecting...', 5000);
+    document.getElementById('deviceCount').textContent = 'Connection lost. Reconnecting...';
     setTimeout(registerDevice, 2000);
   };
 
@@ -169,6 +172,7 @@ function handleMessage(event) {
   console.log('Received from server:', data);
   if (data.type === 'register') {
     myId = data.clientId;
+    console.log('Registered with ID:', myId);
   } else if (data.type === 'update') {
     console.log('Processing update - Device count:', data.deviceCount, 'Files:', data.sharedFiles);
     updateDeviceCount(data.deviceCount);
@@ -185,7 +189,7 @@ function updateDeviceCount(count) {
 
 let files = [];
 function updateFileLists(sharedFiles) {
-  files = sharedFiles;
+  files = sharedFiles || [];
   const deviceFilesList = document.getElementById('deviceFiles');
   const otherFilesList = document.getElementById('otherFiles');
 
@@ -193,7 +197,7 @@ function updateFileLists(sharedFiles) {
   const localFiles = Array.from(sharedFilesMap.values())
     .filter(f => f.ownerId === myId)
     .map(f => f.file);
-  if (localFiles.length === 0 && sharedFiles.length === 0) {
+  if (localFiles.length === 0 && files.length === 0) {
     const li = document.createElement('li');
     li.textContent = 'Get started by selecting files to share with connected devices.';
     deviceFilesList.appendChild(li);
@@ -206,19 +210,21 @@ function updateFileLists(sharedFiles) {
   }
 
   otherFilesList.innerHTML = '';
-  const otherFilesExist = sharedFiles.some(file => file.ownerId !== myId);
-  if (!otherFilesExist && sharedFiles.length === 0) {
+  const otherFilesExist = files.some(file => file.ownerId !== myId);
+  if (!otherFilesExist && files.length === 0) {
     const li = document.createElement('li');
     li.textContent = 'Connect another device to see and download shared files here.';
     otherFilesList.appendChild(li);
   } else {
-    sharedFiles.forEach(file => {
+    files.forEach(file => {
       if (file.ownerId !== myId) {
         const li = document.createElement('li');
         const sizeInKB = (file.size / 1024).toFixed(2);
         li.innerHTML = `<span>${file.name} (${sizeInKB} KB)</span><input type="checkbox" name="download-${file.name}" data-owner="${file.ownerId}">`;
         otherFilesList.appendChild(li);
-        sharedFilesMap.set(file.name, { ...file, ownerId: file.ownerId });
+        if (!sharedFilesMap.has(file.name)) {
+          sharedFilesMap.set(file.name, { ...file, ownerId: file.ownerId });
+        }
       }
     });
   }
@@ -231,24 +237,28 @@ function shareFiles() {
   console.log('shareFiles() called');
   const fileInput = document.getElementById('fileInput');
   const folderInput = document.getElementById('folderInput');
-  const files = Array.from(fileInput.files).concat(Array.from(folderInput.files || []));
-  files.forEach(file => {
+  const filesToShare = Array.from(fileInput.files).concat(Array.from(folderInput.files || []));
+  if (filesToShare.length === 0) {
+    showNotification('Please select files to share.', 2000);
+    return;
+  }
+  filesToShare.forEach(file => {
     sharedFilesMap.set(file.name, { file, ownerId: myId });
     const listItem = document.createElement('li');
     listItem.innerHTML = `<span>${file.name}</span>`;
     document.getElementById('deviceFiles').appendChild(listItem);
   });
-  const fileMetadata = files.map(file => ({
+  const fileMetadata = filesToShare.map(file => ({
     name: file.name,
     size: file.size,
     timestamp: Date.now()
   }));
-  if (files.length > 0 && ws.readyState === WebSocket.OPEN) {
+  if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'share', files: fileMetadata }));
     showNotification('Files shared successfully!', 2000);
   } else {
-    console.error('No files or WebSocket not open');
-    showNotification('Error sharing files.', 2000);
+    console.error('WebSocket not open');
+    showNotification('Error: Not connected to server.', 2000);
   }
 }
 
@@ -257,7 +267,7 @@ function stopSharing() {
   ws.send(JSON.stringify({ type: 'stopSharing' }));
   showNotification('File sharing stopped.', 2000);
   document.getElementById('deviceFiles').innerHTML = '<li>Get started by selecting files to share with connected devices.</li>';
-  updateFileLists(files); // Refresh de lijst
+  updateFileLists(files);
 }
 
 function shareFilesToNetwork(file) {
@@ -282,8 +292,10 @@ function requestFile(ownerId, fileName) {
     if (dataChannel.readyState === 'open') {
       dataChannel.send(JSON.stringify({ type: 'request', fileName }));
     } else {
-      console.error('DataChannel not open, cannot send request');
+      console.error('DataChannel not open');
       showNotification('Connection failed. Retrying...', 2000);
+      isDownloading = false;
+      processDownloadQueue();
     }
   });
 }
@@ -297,7 +309,6 @@ function setupWebRTC(onOpenCallback) {
         { urls: 'turn:numb.viagenie.ca:3478', username: 'webrtc@live.com', credential: 'muazkh' }
       ]
     });
-    console.log('RTCPeerConnection created');
   } catch (error) {
     console.error('Error creating RTCPeerConnection:', error);
     showNotification('WebRTC setup failed.', 3000);
@@ -306,7 +317,6 @@ function setupWebRTC(onOpenCallback) {
     return;
   }
   dataChannel = peerConnection.createDataChannel('fileTransfer');
-  console.log('DataChannel created');
 
   dataChannel.onopen = () => {
     console.log('DataChannel opened');
