@@ -18,16 +18,14 @@ const hostname = window.location.hostname;
 const serverUrl = `${protocol}//${hostname}`;
 
 document.addEventListener('DOMContentLoaded', () => {
-  const deviceDragDropArea = document.getElementById('deviceDragDropArea'); // Nieuw doel voor drag-and-drop
+  const deviceDragDropArea = document.getElementById('deviceDragDropArea');
   const deviceFilesList = document.getElementById('deviceFiles');
   const otherFilesList = document.getElementById('otherFiles');
 
-  // Mobiele optimalisatie: schakel drag-and-drop uit op touch-apparaten
   if ('ontouchstart' in window || navigator.maxTouchPoints) {
     deviceDragDropArea.style.pointerEvents = 'none';
     document.querySelector('.drag-text').textContent = 'Select files using the button above';
   } else {
-    // Drag-and-drop functionaliteit alleen voor #deviceDragDropArea
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
       deviceDragDropArea.addEventListener(eventName, preventDefaults, false);
     });
@@ -46,20 +44,22 @@ document.addEventListener('DOMContentLoaded', () => {
       handleLocalFiles(files);
     });
 
-    // Klik alleen activeren op #deviceDragDropArea
-    deviceDragDropArea.addEventListener('click', (e) => {
-      document.getElementById('fileInput').click();
-    });
+    deviceDragDropArea.addEventListener('click', () => document.getElementById('fileInput').click());
   }
 
-  document.getElementById('fileInput').addEventListener('change', (e) => {
-    handleLocalFiles(e.target.files);
-  });
+  document.getElementById('fileInput').addEventListener('change', (e) => handleLocalFiles(e.target.files));
 
-  // Download geselecteerde bestanden
   document.getElementById('downloadSelected')?.addEventListener('click', (e) => {
     e.stopPropagation();
     const checkboxes = otherFilesList.querySelectorAll('input[type="checkbox"]:checked');
+    if (checkboxes.length === 0) {
+      showNotification('Please select at least one file to download.', 2000);
+      return;
+    }
+
+    showNotification(`Starting download of ${checkboxes.length} file${checkboxes.length > 1 ? 's' : ''}...`);
+    updateProgress(0, 'Preparing download...');
+
     checkboxes.forEach(checkbox => {
       const fileName = checkbox.name.replace('download-', '');
       const fileOwner = files.find(f => f.name === fileName)?.ownerId;
@@ -72,7 +72,6 @@ document.addEventListener('DOMContentLoaded', () => {
     processDownloadQueue();
   });
 
-  // "Select All" checkbox functionaliteit
   document.getElementById('selectAllCheckbox')?.addEventListener('change', (e) => {
     e.stopPropagation();
     const isChecked = e.target.checked;
@@ -80,7 +79,6 @@ document.addEventListener('DOMContentLoaded', () => {
     checkboxes.forEach(checkbox => checkbox.checked = isChecked);
   });
 
-  // Eigen bestanden verwerken
   function handleLocalFiles(files) {
     Array.from(files).forEach(file => {
       const listItem = document.createElement('li');
@@ -92,17 +90,48 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+function showNotification(message, duration = 3000) {
+  const status = document.getElementById('status');
+  status.textContent = message;
+  status.style.display = 'block';
+  setTimeout(() => {
+    status.style.opacity = '0';
+    setTimeout(() => {
+      status.style.display = 'none';
+      status.style.opacity = '1';
+    }, 300);
+  }, duration);
+}
+
+function updateProgress(percentage, message) {
+  const progress = document.getElementById('progress');
+  const progressFill = document.getElementById('progressFill');
+  const progressText = document.getElementById('progressText');
+  const progressMessage = document.getElementById('progressMessage');
+
+  progress.style.display = 'block';
+  progressFill.style.width = `${percentage}%`;
+  progressText.textContent = `${Math.round(percentage)}%`;
+  progressMessage.textContent = message;
+
+  if (percentage >= 100) {
+    setTimeout(() => {
+      progress.style.display = 'none';
+    }, 1000); // Verberg na 1 seconde bij voltooiing
+  }
+}
+
 function processDownloadQueue() {
   if (isDownloading || downloadQueue.length === 0) return;
 
   isDownloading = true;
   const { ownerId, fileName } = downloadQueue.shift();
+  updateProgress(0, `Starting download of ${fileName}...`);
   requestFile(ownerId, fileName);
 }
 
 async function registerDevice() {
   document.getElementById('deviceCount').textContent = 'Connecting...';
-
   console.log(`Attempting to connect to WebSocket at: ${serverUrl}`);
   ws = new WebSocket(serverUrl);
 
@@ -115,14 +144,13 @@ async function registerDevice() {
 
   ws.onerror = (error) => {
     console.error('WebSocket error:', error);
-    document.getElementById('deviceCount').textContent = 'Failed to connect. Please refresh the page.';
+    showNotification('Failed to connect. Please refresh the page.', 5000);
   };
 
   ws.onclose = (event) => {
     console.log('WebSocket closed:', event);
-    document.getElementById('deviceCount').textContent = 'Connection lost. Reconnecting...';
-    setTimeout(connectWebSocket, 2000); // Probeer opnieuw na 2 seconden
-    }
+    showNotification('Connection lost. Reconnecting...', 5000);
+    setTimeout(registerDevice, 2000);
   };
 
   ws.onmessage = handleMessage;
@@ -155,19 +183,19 @@ function updateDeviceCount(count) {
     `${count} device${count === 1 ? '' : 's'} connected`;
 }
 
-let files = [];function updateFileLists(sharedFiles) {
+let files = [];
+function updateFileLists(sharedFiles) {
   files = sharedFiles;
   const deviceFilesList = document.getElementById('deviceFiles');
   const otherFilesList = document.getElementById('otherFiles');
 
-  // Eigen bestanden bijwerken
   deviceFilesList.innerHTML = '';
   const localFiles = Array.from(sharedFilesMap.values())
-    .filter(f => f.ownerId === clientId)
+    .filter(f => f.ownerId === myId)
     .map(f => f.file);
   if (localFiles.length === 0 && sharedFiles.length === 0) {
     const li = document.createElement('li');
-    li.textContent = 'No files shared yet. Select files above to start.';
+    li.textContent = 'Get started by selecting files to share with connected devices.';
     deviceFilesList.appendChild(li);
   } else {
     localFiles.forEach(file => {
@@ -177,26 +205,24 @@ let files = [];function updateFileLists(sharedFiles) {
     });
   }
 
-  // Bestanden van anderen bijwerken
   otherFilesList.innerHTML = '';
-  const otherFilesExist = sharedFiles.some(file => file.ownerId !== clientId);
+  const otherFilesExist = sharedFiles.some(file => file.ownerId !== myId);
   if (!otherFilesExist && sharedFiles.length === 0) {
     const li = document.createElement('li');
-    li.textContent = 'No files available yet. Connect another device to see shared files.';
+    li.textContent = 'Connect another device to see and download shared files here.';
     otherFilesList.appendChild(li);
   } else {
     sharedFiles.forEach(file => {
-      if (file.ownerId !== clientId) {
+      if (file.ownerId !== myId) {
         const li = document.createElement('li');
         const sizeInKB = (file.size / 1024).toFixed(2);
-        li.innerHTML = `<span>${file.name} (${sizeInKB} KB)</span><input type="checkbox" name="download-${file.name}">`;
+        li.innerHTML = `<span>${file.name} (${sizeInKB} KB)</span><input type="checkbox" name="download-${file.name}" data-owner="${file.ownerId}">`;
         otherFilesList.appendChild(li);
         sharedFilesMap.set(file.name, { ...file, ownerId: file.ownerId });
       }
     });
   }
 
-  // Verberg de oude #fileList (indien aanwezig)
   const fileList = document.getElementById('fileList');
   if (fileList) fileList.style.display = 'none';
 }
@@ -219,18 +245,19 @@ function shareFiles() {
   }));
   if (files.length > 0 && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'share', files: fileMetadata }));
-    document.getElementById('status').textContent = 'Files shared!';
+    showNotification('Files shared successfully!', 2000);
   } else {
     console.error('No files or WebSocket not open');
+    showNotification('Error sharing files.', 2000);
   }
 }
 
 function stopSharing() {
   sharedFilesMap.clear();
   ws.send(JSON.stringify({ type: 'stopSharing' }));
-  document.getElementById('status').textContent = 'File sharing stopped.';
-  document.getElementById('deviceFiles').innerHTML = '';
-  document.getElementById('otherFiles').innerHTML = '';
+  showNotification('File sharing stopped.', 2000);
+  document.getElementById('deviceFiles').innerHTML = '<li>Get started by selecting files to share with connected devices.</li>';
+  updateFileLists(files); // Refresh de lijst
 }
 
 function shareFilesToNetwork(file) {
@@ -256,6 +283,7 @@ function requestFile(ownerId, fileName) {
       dataChannel.send(JSON.stringify({ type: 'request', fileName }));
     } else {
       console.error('DataChannel not open, cannot send request');
+      showNotification('Connection failed. Retrying...', 2000);
     }
   });
 }
@@ -272,6 +300,9 @@ function setupWebRTC(onOpenCallback) {
     console.log('RTCPeerConnection created');
   } catch (error) {
     console.error('Error creating RTCPeerConnection:', error);
+    showNotification('WebRTC setup failed.', 3000);
+    isDownloading = false;
+    processDownloadQueue();
     return;
   }
   dataChannel = peerConnection.createDataChannel('fileTransfer');
@@ -279,16 +310,22 @@ function setupWebRTC(onOpenCallback) {
 
   dataChannel.onopen = () => {
     console.log('DataChannel opened');
-    document.getElementById('status').textContent = 'Connection established!';
+    showNotification('Connection established!', 2000);
     if (onOpenCallback) onOpenCallback();
   };
   dataChannel.onmessage = handleDataChannelMessage;
-  dataChannel.onerror = (error) => console.error('DataChannel error:', error);
-  dataChannel.onclose = () => console.log('DataChannel closed');
+  dataChannel.onerror = (error) => {
+    console.error('DataChannel error:', error);
+    showNotification('Transfer error occurred.', 3000);
+  };
+  dataChannel.onclose = () => {
+    console.log('DataChannel closed');
+    isDownloading = false;
+    processDownloadQueue();
+  };
 
   peerConnection.onicecandidate = (e) => {
     if (e.candidate) {
-      console.log('ICE candidate found:', e.candidate.candidate);
       ws.send(JSON.stringify({
         type: 'signal',
         targetId,
@@ -302,37 +339,29 @@ function setupWebRTC(onOpenCallback) {
       peerConnection.close();
       peerConnection = null;
       dataChannel = null;
+      isDownloading = false;
+      processDownloadQueue();
     }
   };
-  peerConnection.oniceconnectionstatechange = () => {
-    console.log('ICE connection state:', peerConnection.iceConnectionState);
-  };
-  peerConnection.onsignalingstatechange = () => {
-    console.log('Signaling state:', peerConnection.signalingState);
-  };
-  peerConnection.onicecandidateerror = (e) => {
-    console.error('ICE candidate error:', e.errorText, 'URL:', e.url);
-  };
 
-  console.log('Creating offer');
   peerConnection.createOffer()
-    .then(offer => {
-      console.log('Offer created:', offer.sdp.substring(0, 100) + '...');
-      return peerConnection.setLocalDescription(offer);
-    })
+    .then(offer => peerConnection.setLocalDescription(offer))
     .then(() => {
-      console.log('Local description set, sending offer to target:', targetId);
       ws.send(JSON.stringify({
         type: 'signal',
         targetId,
         signal: peerConnection.localDescription,
       }));
     })
-    .catch(error => console.error('WebRTC setup error:', error));
+    .catch(error => {
+      console.error('WebRTC setup error:', error);
+      showNotification('Failed to initiate transfer.', 3000);
+      isDownloading = false;
+      processDownloadQueue();
+    });
 }
 
 function handleSignal(data) {
-  console.log('Received signal from:', data.fromId, 'for target:', data.targetId);
   if (data.signal.type === 'offer') {
     if (peerConnection && peerConnection.signalingState !== 'closed') {
       peerConnection.close();
@@ -348,10 +377,7 @@ function handleSignal(data) {
 
     peerConnection.ondatachannel = (e) => {
       dataChannel = e.channel;
-      dataChannel.onopen = () => {
-        console.log('Incoming DataChannel opened');
-        document.getElementById('status').textContent = 'Connection established!';
-      };
+      dataChannel.onopen = () => showNotification('Connection established!', 2000);
       dataChannel.onmessage = handleDataChannelMessage;
       dataChannel.onerror = (error) => console.error('Incoming DataChannel error:', error);
       dataChannel.onclose = () => console.log('Incoming DataChannel closed');
@@ -417,13 +443,17 @@ function handleDataChannelMessage(e) {
       if (file) sendFileWithProgress(file);
     } else if (message.type === 'fileSize') {
       totalSize = message.size;
+      updateProgress(0, `Receiving ${expectedFileName} (${(totalSize / 1024).toFixed(2)} KB)...`);
     } else if (message.type === 'end') {
       receiveFileWithProgress();
     }
   } else {
     receivedChunks.push(e.data);
     const receivedSize = receivedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-    if (totalSize > 0 && receivedSize >= totalSize) receiveFileWithProgress();
+    if (totalSize > 0) {
+      const progress = (receivedSize / totalSize) * 100;
+      updateProgress(progress, `Receiving ${expectedFileName} (${(receivedSize / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`);
+    }
   }
 }
 
@@ -435,11 +465,7 @@ function sendFileWithProgress(file) {
     dataChannel.send(JSON.stringify({ type: 'fileSize', size: totalSize }));
     
     let offset = 0;
-    const progressBar = document.getElementById('progress');
-    const progressFill = document.getElementById('progressFill');
-
-    progressBar.style.display = 'block';
-    document.getElementById('status').textContent = `Sending ${file.name}...`;
+    updateProgress(0, `Sending ${file.name} (${(totalSize / 1024).toFixed(2)} KB)...`);
 
     function sendNextChunk() {
       if (offset < totalSize) {
@@ -448,37 +474,38 @@ function sendFileWithProgress(file) {
         dataChannel.send(chunk);
         offset += chunkSize;
         const progress = (offset / totalSize) * 100;
-        progressFill.style.width = `${progress}%`;
+        updateProgress(progress, `Sending ${file.name} (${(offset / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`);
         setTimeout(sendNextChunk, 10);
       } else {
         dataChannel.send(JSON.stringify({ type: 'end' }));
-        progressBar.style.display = 'none';
-        document.getElementById('status').textContent = `Sent ${file.name}`;
+        updateProgress(100, `Sent ${file.name}`);
+        showNotification(`Sent ${file.name} successfully!`, 2000);
       }
     }
     sendNextChunk();
-  }).catch(error => console.error('Error reading file buffer:', error));
+  }).catch(error => {
+    console.error('Error reading file buffer:', error);
+    showNotification('Error sending file.', 3000);
+  });
 }
 
 function receiveFileWithProgress() {
   if (receivedChunks.length > 0) {
     const receivedSize = receivedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
     const progress = totalSize > 0 ? (receivedSize / totalSize) * 100 : 0;
+    updateProgress(progress, `Finalizing ${expectedFileName}...`);
+    
     const blob = new Blob(receivedChunks);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    document.getElementById('progressFill').style.width = `${progress}%`;
-    document.getElementById('progressText').textContent = `${Math.round(progress)}%`;
     a.href = url;
     a.download = expectedFileName || 'downloaded_file';
     a.click();
-    document.getElementById('status').textContent = 'File downloaded!';
-    document.getElementById('progress').style.display = 'none';
-    console.log('Download triggered for:', expectedFileName);
+    URL.revokeObjectURL(url);
+
+    showNotification(`${expectedFileName} downloaded successfully!`, 2000);
     receivedChunks = [];
     totalSize = 0;
-
-    // Download voltooid, ga verder met de wachtrij
     isDownloading = false;
     processDownloadQueue();
   }
