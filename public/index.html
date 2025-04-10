@@ -53,13 +53,16 @@
       <ul id="otherFiles" class="file-list">
         <li>No files available yet. Connect another device to see shared files.</li>
       </ul>
-      <button id="downloadSelected" class="btn-share">Download</button>
+      <button id="downloadSelected" class="btn-share">Download Selected</button>
     </div>
   </div>
 
-  <div id="status" class="notification"></div>
-  <div id="progress" class="progress-bar">
-    <div id="progressFill" class="progress-fill"><span id="progressText">0%</span></div>
+  <div id="status" class="notification" style="display: none;"></div>
+  <div id="progress" class="progress-bar" style="display: none;">
+    <p id="progressMessage">Downloading...</p>
+    <div class="progress-bar">
+      <div id="progressFill" class="progress-fill"><span id="progressText">0%</span></div>
+    </div>
   </div>
 
   <footer>
