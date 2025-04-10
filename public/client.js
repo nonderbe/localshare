@@ -14,8 +14,8 @@ let downloadQueue = [];
 let isDownloading = false;
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const hostname = window.location.hostname;
-const serverUrl = `${protocol}//${hostname}`;
+const hostname = window.location.hostname || 'localhost'; // Fallback naar localhost voor dev
+const serverUrl = `${protocol}//${hostname}${window.location.port ? ':' + window.location.port : ''}`;
 
 document.addEventListener('DOMContentLoaded', () => {
   const deviceDragDropArea = document.getElementById('deviceDragDropArea');
@@ -139,7 +139,6 @@ async function registerDevice() {
   ws.onopen = () => {
     console.log('WebSocket connected successfully');
     ws.send(JSON.stringify({ type: 'register' }));
-    // Wacht op server-update in plaats van direct 1 te zetten
     checkFolderSupport();
   };
 
@@ -174,8 +173,8 @@ function handleMessage(event) {
     myId = data.clientId;
     console.log('Registered with ID:', myId);
   } else if (data.type === 'update') {
-    console.log('Processing update - Device count:', data.deviceCount, 'Files:', data.sharedFiles);
-    updateDeviceCount(data.deviceCount);
+    console.log('Updating device count:', data.deviceCount, 'Shared files:', data.sharedFiles);
+    updateDeviceCount(data.deviceCount || 0);
     updateFileLists(data.sharedFiles);
   } else if (data.type === 'signal') {
     handleSignal(data);
