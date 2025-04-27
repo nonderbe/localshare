@@ -18,16 +18,14 @@ const hostname = window.location.hostname;
 const serverUrl = `${protocol}//${hostname}`;
 
 document.addEventListener('DOMContentLoaded', () => {
-  const deviceDragDropArea = document.getElementById('deviceDragDropArea'); // Nieuw doel voor drag-and-drop
+  const deviceDragDropArea = document.getElementById('deviceDragDropArea');
   const deviceFilesList = document.getElementById('deviceFiles');
   const otherFilesList = document.getElementById('otherFiles');
 
-  // Mobiele optimalisatie: schakel drag-and-drop uit op touch-apparaten
   if ('ontouchstart' in window || navigator.maxTouchPoints) {
     deviceDragDropArea.style.pointerEvents = 'none';
     document.querySelector('.drag-text').textContent = 'Select files using the button above';
   } else {
-    // Drag-and-drop functionaliteit alleen voor #deviceDragDropArea
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
       deviceDragDropArea.addEventListener(eventName, preventDefaults, false);
     });
@@ -46,7 +44,6 @@ document.addEventListener('DOMContentLoaded', () => {
       handleLocalFiles(files);
     });
 
-    // Klik alleen activeren op #deviceDragDropArea
     deviceDragDropArea.addEventListener('click', (e) => {
       document.getElementById('fileInput').click();
     });
@@ -56,10 +53,14 @@ document.addEventListener('DOMContentLoaded', () => {
     handleLocalFiles(e.target.files);
   });
 
-  // Download geselecteerde bestanden
   document.getElementById('downloadSelected')?.addEventListener('click', (e) => {
     e.stopPropagation();
     const checkboxes = otherFilesList.querySelectorAll('input[type="checkbox"]:checked');
+    if (checkboxes.length === 0) {
+      document.getElementById('status').textContent = 'Please select at least one file to download.';
+      return;
+    }
+    document.getElementById('status').textContent = `Starting download of ${checkboxes.length} file${checkboxes.length > 1 ? 's' : ''}...`;
     checkboxes.forEach(checkbox => {
       const fileName = checkbox.name.replace('download-', '');
       const fileOwner = files.find(f => f.name === fileName)?.ownerId;
@@ -67,12 +68,12 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadQueue.push({ ownerId: fileOwner, fileName });
       } else {
         console.error(`Owner not found for file: ${fileName}`);
+        document.getElementById('status').textContent = `Error: Owner not found for ${fileName}`;
       }
     });
     processDownloadQueue();
   });
 
-  // "Select All" checkbox functionaliteit
   document.getElementById('selectAllCheckbox')?.addEventListener('change', (e) => {
     e.stopPropagation();
     const isChecked = e.target.checked;
@@ -80,7 +81,6 @@ document.addEventListener('DOMContentLoaded', () => {
     checkboxes.forEach(checkbox => checkbox.checked = isChecked);
   });
 
-  // Eigen bestanden verwerken
   function handleLocalFiles(files) {
     Array.from(files).forEach(file => {
       const listItem = document.createElement('li');
@@ -92,11 +92,36 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// Nieuwe functie voor het updaten van de voortgangsbalk
+function updateProgress(percentage, message) {
+  const progressBar = document.getElementById('progress');
+  const progressFill = document.getElementById('progressFill');
+  const progressText = document.getElementById('progressText');
+  const status = document.getElementById('status');
+
+  if (!progressBar || !progressFill || !progressText || !status) {
+    console.error('Progress elements not found');
+    return;
+  }
+
+  progressBar.style.display = 'block';
+  progressFill.style.width = `${percentage}%`;
+  progressText.textContent = `${Math.round(percentage)}%`;
+  status.textContent = message;
+
+  if (percentage >= 100) {
+    setTimeout(() => {
+      progressBar.style.display = 'none';
+    }, 1000);
+  }
+}
+
 function processDownloadQueue() {
   if (isDownloading || downloadQueue.length === 0) return;
 
   isDownloading = true;
   const { ownerId, fileName } = downloadQueue.shift();
+  updateProgress(0, `Starting download of ${fileName}...`);
   requestFile(ownerId, fileName);
 }
 
@@ -115,14 +140,13 @@ async function registerDevice() {
 
   ws.onerror = (error) => {
     console.error('WebSocket error:', error);
-    document.getElementById('deviceCount').textContent = 'Error: Could not connect to server.';
+    document.getElementById('deviceCount').textContent = 'Failed to connect. Please refresh the page.';
   };
 
   ws.onclose = (event) => {
     console.log('WebSocket closed:', event);
-    if (document.getElementById('deviceCount').textContent === 'Connecting...') {
-      document.getElementById('deviceCount').textContent = 'Error: Connection lost.';
-    }
+    document.getElementById('deviceCount').textContent = 'Connection lost. Reconnecting...';
+    setTimeout(registerDevice, 2000);
   };
 
   ws.onmessage = handleMessage;
@@ -160,32 +184,43 @@ function updateFileLists(sharedFiles) {
   files = sharedFiles;
   const deviceFilesList = document.getElementById('deviceFiles');
   const otherFilesList = document.getElementById('otherFiles');
-  
-  // Eigen bestanden bijwerken
+
   deviceFilesList.innerHTML = '';
   const localFiles = Array.from(sharedFilesMap.values())
     .filter(f => f.ownerId === myId)
     .map(f => f.file);
-  localFiles.forEach(file => {
+  if (localFiles.length === 0 && sharedFiles.length === 0) {
     const li = document.createElement('li');
-    li.innerHTML = `<span>${file.name}</span>`;
+    li.textContent = 'No files shared yet. Select files above to start.';
     deviceFilesList.appendChild(li);
-  });
-
-  // Bestanden van anderen bijwerken
-  otherFilesList.innerHTML = '';
-  sharedFiles.forEach(file => {
-    if (file.ownerId !== myId) {
+  } else {
+    localFiles.forEach(file => {
       const li = document.createElement('li');
-      const sizeInKB = (file.size / 1024).toFixed(2);
-      li.innerHTML = `<span>${file.name} (${sizeInKB} KB)</span><input type="checkbox" name="download-${file.name}">`;
-      otherFilesList.appendChild(li);
-      sharedFilesMap.set(file.name, { ...file, ownerId: file.ownerId });
-    }
-  });
+      li.innerHTML = `<span>${file.name}</span>`;
+      deviceFilesList.appendChild(li);
+    });
+  }
 
-  // Verberg de oude #fileList
-  document.getElementById('fileList').style.display = 'none';
+  otherFilesList.innerHTML = '';
+  const otherFilesExist = sharedFiles.some(file => file.ownerId !== myId);
+  if (!otherFilesExist && sharedFiles.length === 0) {
+    const li = document.createElement('li');
+    li.textContent = 'No files available yet. Connect another device to see shared files.';
+    otherFilesList.appendChild(li);
+  } else {
+    sharedFiles.forEach(file => {
+      if (file.ownerId !== myId) {
+        const li = document.createElement('li');
+        const sizeInKB = (file.size / 1024).toFixed(2);
+        li.innerHTML = `<span>${file.name} (${sizeInKB} KB)</span><input type="checkbox" name="download-${file.name}">`;
+        otherFilesList.appendChild(li);
+        sharedFilesMap.set(file.name, { ...file, ownerId: file.ownerId });
+      }
+    });
+  }
+
+  const fileList = document.getElementById('fileList');
+  if (fileList) fileList.style.display = 'none';
 }
 
 function shareFiles() {
@@ -243,6 +278,8 @@ function requestFile(ownerId, fileName) {
       dataChannel.send(JSON.stringify({ type: 'request', fileName }));
     } else {
       console.error('DataChannel not open, cannot send request');
+      isDownloading = false;
+      processDownloadQueue();
     }
   });
 }
@@ -271,7 +308,11 @@ function setupWebRTC(onOpenCallback) {
   };
   dataChannel.onmessage = handleDataChannelMessage;
   dataChannel.onerror = (error) => console.error('DataChannel error:', error);
-  dataChannel.onclose = () => console.log('DataChannel closed');
+  dataChannel.onclose = () => {
+    console.log('DataChannel closed');
+    isDownloading = false;
+    processDownloadQueue();
+  };
 
   peerConnection.onicecandidate = (e) => {
     if (e.candidate) {
@@ -289,6 +330,8 @@ function setupWebRTC(onOpenCallback) {
       peerConnection.close();
       peerConnection = null;
       dataChannel = null;
+      isDownloading = false;
+      processDownloadQueue();
     }
   };
   peerConnection.oniceconnectionstatechange = () => {
@@ -404,13 +447,17 @@ function handleDataChannelMessage(e) {
       if (file) sendFileWithProgress(file);
     } else if (message.type === 'fileSize') {
       totalSize = message.size;
+      updateProgress(0, `Receiving ${expectedFileName} (${(totalSize / 1024).toFixed(2)} KB)...`);
     } else if (message.type === 'end') {
       receiveFileWithProgress();
     }
   } else {
     receivedChunks.push(e.data);
     const receivedSize = receivedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-    if (totalSize > 0 && receivedSize >= totalSize) receiveFileWithProgress();
+    if (totalSize > 0) {
+      const progress = (receivedSize / totalSize) * 100;
+      updateProgress(progress, `Receiving ${expectedFileName} (${(receivedSize / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`);
+    }
   }
 }
 
@@ -422,11 +469,7 @@ function sendFileWithProgress(file) {
     dataChannel.send(JSON.stringify({ type: 'fileSize', size: totalSize }));
     
     let offset = 0;
-    const progressBar = document.getElementById('progress');
-    const progressFill = document.getElementById('progressFill');
-
-    progressBar.style.display = 'block';
-    document.getElementById('status').textContent = `Sending ${file.name}...`;
+    updateProgress(0, `Sending ${file.name} (${(totalSize / 1024).toFixed(2)} KB)...`);
 
     function sendNextChunk() {
       if (offset < totalSize) {
@@ -435,37 +478,37 @@ function sendFileWithProgress(file) {
         dataChannel.send(chunk);
         offset += chunkSize;
         const progress = (offset / totalSize) * 100;
-        progressFill.style.width = `${progress}%`;
+        updateProgress(progress, `Sending ${file.name} (${(offset / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`);
         setTimeout(sendNextChunk, 10);
       } else {
         dataChannel.send(JSON.stringify({ type: 'end' }));
-        progressBar.style.display = 'none';
-        document.getElementById('status').textContent = `Sent ${file.name}`;
+        updateProgress(100, `Sent ${file.name}`);
       }
     }
     sendNextChunk();
-  }).catch(error => console.error('Error reading file buffer:', error));
+  }).catch(error => {
+    console.error('Error reading file buffer:', error);
+    document.getElementById('status').textContent = 'Error sending file';
+  });
 }
 
 function receiveFileWithProgress() {
   if (receivedChunks.length > 0) {
     const receivedSize = receivedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
     const progress = totalSize > 0 ? (receivedSize / totalSize) * 100 : 0;
+    updateProgress(progress, `Finalizing ${expectedFileName}...`);
+    
     const blob = new Blob(receivedChunks);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    document.getElementById('progressFill').style.width = `${progress}%`;
-    document.getElementById('progressText').textContent = `${Math.round(progress)}%`;
     a.href = url;
     a.download = expectedFileName || 'downloaded_file';
     a.click();
-    document.getElementById('status').textContent = 'File downloaded!';
-    document.getElementById('progress').style.display = 'none';
-    console.log('Download triggered for:', expectedFileName);
+    URL.revokeObjectURL(url);
+
+    updateProgress(100, `${expectedFileName} downloaded successfully!`);
     receivedChunks = [];
     totalSize = 0;
-
-    // Download voltooid, ga verder met de wachtrij
     isDownloading = false;
     processDownloadQueue();
   }
