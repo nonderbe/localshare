@@ -87,23 +87,61 @@ button:hover {
 }
 
 /* Voortgangsbalk */
-.progress-bar {
+/* Statusmelding */
+#status.notification {
+  margin: 10px 0;
+  font-size: 16px;
+  text-align: center;
+  color: #333;
+}
+
+/* Voortgangsbalk */
+#progress.progress-bar {
   max-width: 1200px;
-  margin: 0 auto 40px;
+  margin: 0 auto 10px;
   height: 16px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 20px;
+  display: none; /* Verborgen totdat download start */
+  overflow: hidden;
 }
-.progress-fill {
+
+/* Voortgangsvulling */
+#progressFill.progress-fill {
+  height: 100%;
   background: linear-gradient(to right, #6C63FF, #FF6B6B);
   box-shadow: 0 0 10px #6C63FF;
+  width: 0%; /* Start op 0% */
+  transition: width 0.3s ease-in-out; /* Soepele voortgangsanimatie */
   position: relative;
 }
-.progressText {
+
+/* Voortgangstekst */
+#progressText {
   position: absolute;
   right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
   font-size: 12px;
   color: white;
+  font-weight: bold;
+}
+
+/* Mobiele optimalisatie */
+@media (max-width: 600px) {
+  #progress.progress-bar {
+    max-width: 90%;
+    margin: 10px auto;
+  }
+
+  #progressText {
+    font-size: 10px;
+    right: 5px;
+  }
+
+  #status.notification {
+    font-size: 14px;
+  }
 }
 
 /* Notificatie */
