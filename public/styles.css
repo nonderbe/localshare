@@ -99,7 +99,7 @@ button:hover {
   box-shadow: 0 0 10px #6C63FF;
   position: relative;
 }
-#progressText {
+.progressText {
   position: absolute;
   right: 10px;
   font-size: 12px;
