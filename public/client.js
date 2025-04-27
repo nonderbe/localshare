@@ -100,16 +100,25 @@ function updateProgress(percentage, message) {
   const status = document.getElementById('status');
 
   if (!progressBar || !progressFill || !progressText || !status) {
-    console.error('Progress elements not found');
+    console.error('Progress elements not found:', {
+      progressBar: !!progressBar,
+      progressFill: !!progressFill,
+      progressText: !!progressText,
+      status: !!status
+    });
     return;
   }
 
+  // Zorg dat percentage geen NaN is
+  const safePercentage = isNaN(percentage) ? 0 : Math.min(Math.max(percentage, 0), 100);
+  console.log(`Updating progress: ${safePercentage}% - ${message}`);
+  
   progressBar.style.display = 'block';
-  progressFill.style.width = `${percentage}%`;
-  progressText.textContent = `${Math.round(percentage)}%`;
+  progressFill.style.width = `${safePercentage}%`;
+  progressText.textContent = `${Math.round(safePercentage)}%`;
   status.textContent = message;
 
-  if (percentage >= 100) {
+  if (safePercentage >= 100) {
     setTimeout(() => {
       progressBar.style.display = 'none';
     }, 1000);
@@ -447,6 +456,7 @@ function handleDataChannelMessage(e) {
       if (file) sendFileWithProgress(file);
     } else if (message.type === 'fileSize') {
       totalSize = message.size;
+      console.log(`Set totalSize to ${totalSize} bytes`);
       updateProgress(0, `Receiving ${expectedFileName} (${(totalSize / 1024).toFixed(2)} KB)...`);
     } else if (message.type === 'end') {
       receiveFileWithProgress();
@@ -457,6 +467,9 @@ function handleDataChannelMessage(e) {
     if (totalSize > 0) {
       const progress = (receivedSize / totalSize) * 100;
       updateProgress(progress, `Receiving ${expectedFileName} (${(receivedSize / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`);
+    } else {
+      console.warn('totalSize is 0, skipping progress update');
+      updateProgress(0, `Receiving ${expectedFileName} (waiting for file size)...`);
     }
   }
 }
@@ -495,7 +508,8 @@ function sendFileWithProgress(file) {
 function receiveFileWithProgress() {
   if (receivedChunks.length > 0) {
     const receivedSize = receivedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-    const progress = totalSize > 0 ? (receivedSize / totalSize) * 100 : 0;
+    const progress = totalSize > 0 ? (receivedSize / totalSize) * 100 : 100;
+    console.log(`Finalizing download: receivedSize: ${receivedSize}, totalSize: ${totalSize}, progress: ${progress}%`);
     updateProgress(progress, `Finalizing ${expectedFileName}...`);
     
     const blob = new Blob(receivedChunks);
@@ -509,6 +523,10 @@ function receiveFileWithProgress() {
     updateProgress(100, `${expectedFileName} downloaded successfully!`);
     receivedChunks = [];
     totalSize = 0;
+    isDownloading = false;
+    processDownloadQueue();
+  } else {
+    console.warn('No chunks received, skipping download');
     isDownloading = false;
     processDownloadQueue();
   }
