@@ -111,16 +111,21 @@ function updateProgress(percentage, message) {
 
   // Zorg dat percentage geen NaN is
   const safePercentage = isNaN(percentage) ? 0 : Math.min(Math.max(percentage, 0), 100);
-  console.log(`Updating progress: ${safePercentage}% - ${message}`);
-  
+  console.log(`Updating progress: ${safePercentage}% - ${message} (display: ${progressBar.style.display})`);
+
+  // Force progress bar visibility
   progressBar.style.display = 'block';
   progressFill.style.width = `${safePercentage}%`;
   progressText.textContent = `${Math.round(safePercentage)}%`;
   status.textContent = message;
 
+    // Debug CSS properties
+  console.log(`Progress bar styles: display=${getComputedStyle(progressBar).display}, width=${progressFill.style.width}`);
+
   if (safePercentage >= 100) {
     setTimeout(() => {
       progressBar.style.display = 'none';
+      console.log('Hid progress bar after completion');
     }, 1000);
   }
 }
@@ -451,27 +456,29 @@ function handleSignal(data) {
 function handleDataChannelMessage(e) {
   if (typeof e.data === 'string') {
     const message = JSON.parse(e.data);
+    console.log('Received message:', message);
     if (message.type === 'request') {
       const file = sharedFilesMap.get(message.fileName)?.file;
       if (file) sendFileWithProgress(file);
     } else if (message.type === 'fileSize') {
-      totalSize = message.size;
+      totalSize = message.size || 0;
       console.log(`Set totalSize to ${totalSize} bytes`);
       updateProgress(0, `Receiving ${expectedFileName} (${(totalSize / 1024).toFixed(2)} KB)...`);
     } else if (message.type === 'end') {
+      console.log('Received end message, finalizing download');
       receiveFileWithProgress();
     }
   } else {
     receivedChunks.push(e.data);
     const receivedSize = receivedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-    if (totalSize > 0) {
-      const progress = (receivedSize / totalSize) * 100;
-      updateProgress(progress, `Receiving ${expectedFileName} (${(receivedSize / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`);
-    } else {
-      console.warn('totalSize is 0, skipping progress update');
-      updateProgress(0, `Receiving ${expectedFileName} (waiting for file size)...`);
-    }
-  }
+    console.log(`Received chunk, receivedSize: ${receivedSize}, totalSize: ${totalSize}`);
+    
+    // Update progress even if totalSize is not yet set
+    const progress = totalSize > 0 ? (receivedSize / totalSize) * 100 : 0;
+    const statusMessage = totalSize > 0 
+      ? `Receiving ${expectedFileName} (${(receivedSize / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`
+      : `Receiving ${expectedFileName} (waiting for file size)...`;
+    updateProgress(progress, statusMessage);  }
 }
 
 function sendFileWithProgress(file) {
