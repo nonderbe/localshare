@@ -104,6 +104,8 @@ button:hover {
   border-radius: 20px;
   display: none; /* Verborgen totdat download start */
   overflow: hidden;
+  visibility: visible; /* Ensure visibility */
+  opacity: 1; /* Prevent fading issues */
 }
 
 /* Voortgangsvulling */
