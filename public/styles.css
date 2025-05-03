@@ -132,12 +132,17 @@ button:hover {
 /* Voortgangstekst */
 .progress-text {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 0;
+  left: 5px; /* Start slightly inside the bar */
+  right: 5px;
+  line-height: 16px; /* Match bar height */
   font-size: 12px;
   font-weight: bold;
   text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
   z-index: 3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Kleuren voor verzenden (rood) en ontvangen (groen) */
@@ -160,6 +165,7 @@ button:hover {
 
   .progress-text {
     font-size: 10px;
+    line-height: 16px;
   }
 
   #status.notification {
