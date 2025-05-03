@@ -40,8 +40,34 @@ wss.on('connection', (ws) => {
       broadcastUpdate();
     } else if (data.type === 'share') {
       const clientInfo = clients.get(ws);
-      clientInfo.sharedFiles = data.files;
-      console.log('Client shared files:', clientInfo.id, 'Files:', data.files);
+      // Create a map of existing files by name for quick lookup
+      const existingFilesMap = new Map(
+        clientInfo.sharedFiles.map(file => [file.name, file])
+      );
+      // Merge new files, updating existing ones and adding new ones
+      const updatedFiles = [];
+      data.files.forEach(newFile => {
+        if (existingFilesMap.has(newFile.name)) {
+          // Update existing file's metadata (e.g., timestamp, size)
+          const existingFile = existingFilesMap.get(newFile.name);
+          updatedFiles.push({
+            ...existingFile,
+            size: newFile.size,
+            timestamp: newFile.timestamp
+          });
+        } else {
+          // Add new file
+          updatedFiles.push(newFile);
+        }
+      });
+      // Include existing files that weren't in the new data (to preserve them)
+      existingFilesMap.forEach((existingFile, name) => {
+        if (!data.files.some(newFile => newFile.name === name)) {
+          updatedFiles.push(existingFile);
+        }
+      });
+      clientInfo.sharedFiles = updatedFiles;
+      console.log('Client updated shared files:', clientInfo.id, 'Files:', clientInfo.sharedFiles);
       broadcastUpdate();
     } else if (data.type === 'stopSharing') {
       const clientInfo = clients.get(ws);
@@ -113,8 +139,8 @@ function broadcastUpdate() {
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER, // Gezet via Render omgevingsvariabelen
-    pass: process.env.EMAIL_PASS  // Gezet via Render omgevingsvariabelen
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
   }
 });
 
