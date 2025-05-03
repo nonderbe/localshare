@@ -7,15 +7,67 @@ let myId;
 let targetId;
 let sharedFilesMap = new Map();
 let pendingCandidates = [];
-let receivedChunks = [];
-let expectedFileName;
-let totalSize = 0;
-let downloadQueue = [];
 let isDownloading = false;
+let isSharing = true; // New flag to control sharing state
+const transfers = new Map(); // Track multiple transfers: { fileId: { fileName, totalSize, receivedSize/sentSize, chunks, progressBarId, direction } }
+let downloadQueue = [];
+let files = [];
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const hostname = window.location.hostname;
 const serverUrl = `${protocol}//${hostname}`;
+
+// Create a unique progress bar for a file transfer
+function createProgressBar(fileId, fileName, direction) {
+  const container = document.getElementById('progressContainer');
+  const barId = `progress-${fileId}`;
+  const html = `
+    <div id="${barId}" class="progress-bar">
+      <div id="${barId}-fill" class="progress-fill"></div>
+      <span id="${barId}-text" class="progress-text ${direction}">${direction === 'send' ? 'Sending' : 'Receiving'} ${fileName}: 0%</span>
+    </div>
+  `;
+  container.insertAdjacentHTML('beforeend', html);
+  return barId;
+}
+
+// Update progress for a specific file transfer
+function updateProgress(fileId, percentage, message, direction) {
+  const progressBar = document.getElementById(`progress-${fileId}`);
+  const progressFill = document.getElementById(`progress-${fileId}-fill`);
+  const progressText = document.getElementById(`progress-${fileId}-text`);
+  const status = document.getElementById('status');
+
+  if (!progressBar || !progressFill || !progressText || !status) {
+    console.error('Progress elements not found for fileId:', fileId);
+    return;
+  }
+
+  const safePercentage = isNaN(percentage) || percentage < 0 ? 0 : Math.min(percentage, 100);
+  console.log(`Updating progress for ${fileId}: ${safePercentage}% - ${message}`);
+
+  progressBar.style.display = 'block';
+  progressBar.style.visibility = 'visible';
+  progressBar.style.opacity = '1';
+  progressFill.style.width = `${safePercentage}%`;
+  progressText.textContent = `${direction === 'send' ? 'Sending' : 'Receiving'} ${transfers.get(fileId)?.fileName || 'File'}: ${Math.round(safePercentage)}%`;
+  status.textContent = message;
+
+  const textOffset = Math.min(safePercentage + 5, 90);
+  progressText.style.left = `${textOffset}%`;
+  progressText.style.right = 'auto';
+
+  const computedStyle = getComputedStyle(progressBar);
+  console.log(`Progress bar styles for ${fileId}: display=${computedStyle.display}, visibility=${computedStyle.visibility}, opacity=${computedStyle.opacity}, width=${progressFill.style.width}, textLeft=${progressText.style.left}`);
+
+  if (safePercentage >= 100) {
+    setTimeout(() => {
+      progressBar.remove();
+      transfers.delete(fileId);
+      console.log(`Removed progress bar for ${fileId}`);
+    }, 1000);
+  }
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   const deviceDragDropArea = document.getElementById('deviceDragDropArea');
@@ -44,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
       handleLocalFiles(files);
     });
 
-    deviceDragDropArea.addEventListener('click', (e) => {
+    deviceDragDropArea.addEventListener('click', () => {
       document.getElementById('fileInput').click();
     });
   }
@@ -92,60 +144,22 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// Nieuwe functie voor het updaten van de voortgangsbalk
-function updateProgress(percentage, message) {
-  const progressBar = document.getElementById('progress');
-  const progressFill = document.getElementById('progressFill');
-  const progressText = document.getElementById('progressText');
-  const status = document.getElementById('status');
-
-  if (!progressBar || !progressFill || !progressText || !status) {
-    console.error('Progress elements not found:', {
-      progressBar: !!progressBar,
-      progressFill: !!progressFill,
-      progressText: !!progressText,
-      status: !!status
-    });
-    return;
-  }
-
-  // Ensure percentage is valid
-  const safePercentage = isNaN(percentage) || percentage < 0 ? 0 : Math.min(percentage, 100);
-  console.log(`Updating progress: ${safePercentage}% - ${message}`);
-
-  // Force progress bar visibility
-  progressBar.style.display = 'block';
-  progressBar.style.visibility = 'visible';
-  progressBar.style.opacity = '1';
-  progressFill.style.width = `${safePercentage}%`;
-  progressText.textContent = `${Math.round(safePercentage)}%`;
-  status.textContent = message;
-
-  // Dynamically position progressText in the unfilled portion
-  const textOffset = Math.min(safePercentage + 5, 90); // Position text just right of filled portion, max 90%
-  progressText.style.left = `${textOffset}%`;
-  progressText.style.right = 'auto';
-  progressText.style.color = safePercentage < 50 ? '#E0E0E0' : '#FFFFFF'; // Adjust color for visibility
-
-  // Debug CSS properties
-  const computedStyle = getComputedStyle(progressBar);
-  console.log(`Progress bar styles: display=${computedStyle.display}, visibility=${computedStyle.visibility}, opacity=${computedStyle.opacity}, width=${progressFill.style.width}, textLeft=${progressText.style.left}`);
-
-  if (safePercentage >= 100) {
-    setTimeout(() => {
-      progressBar.style.display = 'none';
-      console.log('Hid progress bar after completion');
-    }, 1000);
-  }
-}
-
 function processDownloadQueue() {
   if (isDownloading || downloadQueue.length === 0) return;
 
   isDownloading = true;
   const { ownerId, fileName } = downloadQueue.shift();
-  updateProgress(0, `Starting download of ${fileName}...`);
-  requestFile(ownerId, fileName);
+  const fileId = Date.now().toString() + '-' + fileName; // Unique fileId
+  transfers.set(fileId, {
+    fileName,
+    totalSize: 0,
+    receivedSize: 0,
+    chunks: [],
+    progressBarId: createProgressBar(fileId, fileName, 'receive'),
+    direction: 'receive'
+  });
+  updateProgress(fileId, 0, `Starting download of ${fileName}...`, 'receive');
+  requestFile(ownerId, fileName, fileId);
 }
 
 async function registerDevice() {
@@ -202,7 +216,6 @@ function updateDeviceCount(count) {
     `${count} device${count === 1 ? '' : 's'} connected`;
 }
 
-let files = [];
 function updateFileLists(sharedFiles) {
   files = sharedFiles;
   const deviceFilesList = document.getElementById('deviceFiles');
@@ -271,11 +284,35 @@ function shareFiles() {
 }
 
 function stopSharing() {
+  isSharing = false;
   sharedFilesMap.clear();
-  ws.send(JSON.stringify({ type: 'stopSharing' }));
-  document.getElementById('status').textContent = 'File sharing stopped.';
   document.getElementById('deviceFiles').innerHTML = '';
   document.getElementById('otherFiles').innerHTML = '';
+  document.getElementById('status').textContent = 'File sharing stopped.';
+  console.log('Stopped sharing, notifying peers');
+
+  // Notify all active transfers to stop
+  for (const [fileId, transfer] of transfers) {
+    if (transfer.direction === 'send' && dataChannel?.readyState === 'open') {
+      dataChannel.send(JSON.stringify({ type: 'stop', fileId }));
+    }
+    const progressBar = document.getElementById(`progress-${fileId}`);
+    if (progressBar) progressBar.remove();
+    transfers.delete(fileId);
+  }
+
+  // Send stopSharing to server and close data channel
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'stopSharing' }));
+  }
+  if (dataChannel) {
+    dataChannel.close();
+    dataChannel = null;
+  }
+  if (peerConnection) {
+    peerConnection.close();
+    peerConnection = null;
+  }
 }
 
 function shareFilesToNetwork(file) {
@@ -285,22 +322,20 @@ function shareFilesToNetwork(file) {
   }
 }
 
-function requestFile(ownerId, fileName) {
-  console.log('requestFile called - ownerId:', ownerId, 'fileName:', fileName);
+function requestFile(ownerId, fileName, fileId) {
+  console.log('requestFile called - ownerId:', ownerId, 'fileName:', fileName, 'fileId:', fileId);
   targetId = ownerId;
-  expectedFileName = fileName;
-  receivedChunks = [];
-  totalSize = 0;
   if (peerConnection) {
     peerConnection.close();
     peerConnection = null;
     dataChannel = null;
   }
   setupWebRTC(() => {
-    if (dataChannel.readyState === 'open') {
-      dataChannel.send(JSON.stringify({ type: 'request', fileName }));
+    if (dataChannel?.readyState === 'open') {
+      dataChannel.send(JSON.stringify({ type: 'request', fileName, fileId }));
     } else {
       console.error('DataChannel not open, cannot send request');
+      transfers.delete(fileId);
       isDownloading = false;
       processDownloadQueue();
     }
@@ -321,8 +356,8 @@ function setupWebRTC(onOpenCallback) {
     console.error('Error creating RTCPeerConnection:', error);
     return;
   }
-  dataChannel = peerConnection.createDataChannel('fileTransfer');
-  console.log('DataChannel created');
+  dataChannel = peerConnection.createDataChannel('fileTransfer', { binaryType: 'arraybuffer' });
+  console.log('DataChannel created with binaryType: arraybuffer');
 
   dataChannel.onopen = () => {
     console.log('DataChannel opened');
@@ -401,6 +436,7 @@ function handleSignal(data) {
 
     peerConnection.ondatachannel = (e) => {
       dataChannel = e.channel;
+      dataChannel.binaryType = 'arraybuffer'; // Ensure binary data for Firefox
       dataChannel.onopen = () => {
         console.log('Incoming DataChannel opened');
         document.getElementById('status').textContent = 'Connection established!';
@@ -468,90 +504,125 @@ function handleDataChannelMessage(e) {
     console.log('Received message:', message);
     if (message.type === 'request') {
       const file = sharedFilesMap.get(message.fileName)?.file;
-      if (file) sendFileWithProgress(file);
+      if (file) sendFileWithProgress(file, message.fileId);
     } else if (message.type === 'fileSize') {
-      totalSize = message.size || 0;
-      console.log(`Set totalSize to ${totalSize} bytes`);
-      updateProgress(0, `Receiving ${expectedFileName} (0.00 KB of ${(totalSize / 1024).toFixed(2)} KB)...`);
+      const fileId = message.fileId || Date.now().toString();
+      transfers.set(fileId, {
+        fileName: message.fileName,
+        totalSize: message.size || 0,
+        receivedSize: 0,
+        chunks: [],
+        progressBarId: createProgressBar(fileId, message.fileName, 'receive'),
+        direction: 'receive'
+      });
+      console.log(`Set totalSize for ${fileId} to ${message.size} bytes`);
+      updateProgress(fileId, 0, `Receiving ${message.fileName} (0.00 KB of ${(message.size / 1024).toFixed(2)} KB)...`, 'receive');
     } else if (message.type === 'end') {
       console.log('Received end message, finalizing download');
-      receiveFileWithProgress();
+      receiveFileWithProgress(message.fileId);
+    } else if (message.type === 'stop') {
+      console.log(`Received stop message for fileId: ${message.fileId}`);
+      transfers.delete(message.fileId);
+      const progressBar = document.getElementById(`progress-${message.fileId}`);
+      if (progressBar) progressBar.remove();
+      document.getElementById('status').textContent = `Transfer of ${message.fileName || 'file'} stopped by sender.`;
     }
   } else {
-    // Validate chunk before adding
-    if (e.data && (e.data instanceof ArrayBuffer || e.data instanceof Blob) && e.data.byteLength > 0) {
-      receivedChunks.push(e.data);
-      const receivedSize = receivedChunks.reduce((sum, chunk) => sum + (chunk.byteLength || 0), 0);
-      console.log(`Received valid chunk, type: ${e.data.constructor.name}, byteLength: ${e.data.byteLength}, receivedSize: ${receivedSize}, totalSize: ${totalSize}`);
-      
-      // Calculate progress and status message
-      const progress = totalSize > 0 ? (receivedSize / totalSize) * 100 : 0;
-      const statusMessage = totalSize > 0 
-        ? `Receiving ${expectedFileName} (${(receivedSize / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`
-        : `Receiving ${expectedFileName} (waiting for file size)...`;
-      updateProgress(progress, statusMessage);
+    const fileId = Array.from(transfers.keys()).find(id => transfers.get(id).direction === 'receive') || Date.now().toString();
+    const transfer = transfers.get(fileId);
+    if (transfer) {
+      if (e.data && (e.data instanceof ArrayBuffer || e.data instanceof Blob) && e.data.byteLength > 0) {
+        transfer.chunks.push(e.data);
+        transfer.receivedSize = transfer.chunks.reduce((sum, chunk) => sum + (chunk.byteLength || 0), 0);
+        console.log(`Received valid chunk for ${fileId}, type: ${e.data.constructor.name}, byteLength: ${e.data.byteLength}, receivedSize: ${transfer.receivedSize}, totalSize: ${transfer.totalSize}`);
+        
+        const progress = transfer.totalSize > 0 ? (transfer.receivedSize / transfer.totalSize) * 100 : 0;
+        updateProgress(fileId, progress, `Receiving ${transfer.fileName} (${(transfer.receivedSize / 1024).toFixed(2)} KB of ${(transfer.totalSize / 1024).toFixed(2)} KB)...`, 'receive');
+      } else {
+        console.warn(`Received invalid chunk for ${fileId}, type: ${e.data?.constructor?.name || 'unknown'}, byteLength: ${e.data?.byteLength || 'undefined'}, raw:`, e.data);
+      }
     } else {
-      console.warn(`Received invalid chunk, type: ${e.data?.constructor?.name || 'unknown'}, byteLength: ${e.data?.byteLength || 'undefined'}`);
+      console.warn(`No transfer found for chunk, fileId: ${fileId}`);
     }
   }
 }
 
-function sendFileWithProgress(file) {
-  if (dataChannel.readyState !== 'open') return;
+function sendFileWithProgress(file, fileId = Date.now().toString()) {
+  if (!isSharing || dataChannel?.readyState !== 'open') {
+    console.warn('Cannot send file: not sharing or data channel closed');
+    return;
+  }
+
   const chunkSize = 16384;
   file.arrayBuffer().then(buffer => {
     const totalSize = buffer.byteLength;
-    dataChannel.send(JSON.stringify({ type: 'fileSize', size: totalSize }));
+    transfers.set(fileId, {
+      fileName: file.name,
+      totalSize: totalSize,
+      sentSize: 0,
+      progressBarId: createProgressBar(fileId, file.name, 'send'),
+      direction: 'send'
+    });
+    dataChannel.send(JSON.stringify({ type: 'fileSize', size: totalSize, fileName: file.name, fileId }));
+    console.log(`Sent fileSize for ${fileId}: ${totalSize} bytes`);
     
     let offset = 0;
-    updateProgress(0, `Sending ${file.name} (${(totalSize / 1024).toFixed(2)} KB)...`);
+    updateProgress(fileId, 0, `Sending ${file.name} (0.00 KB of ${(totalSize / 1024).toFixed(2)} KB)...`, 'send');
 
     function sendNextChunk() {
-      if (offset < totalSize) {
-        if (dataChannel.readyState !== 'open') return;
-        const chunk = buffer.slice(offset, offset + chunkSize);
-        dataChannel.send(chunk);
-        offset += chunkSize;
-        const progress = (offset / totalSize) * 100;
-        updateProgress(progress, `Sending ${file.name} (${(offset / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`);
+      if (!isSharing || offset >= totalSize || dataChannel.readyState !== 'open') {
+        if (offset >= totalSize) {
+          dataChannel.send(JSON.stringify({ type: 'end', fileId }));
+          updateProgress(fileId, 100, `Sent ${file.name}`, 'send');
+        }
+        return;
+      }
+      const chunk = buffer.slice(offset, offset + chunkSize);
+      console.log(`Sending chunk for ${fileId}, offset: ${offset}, size: ${chunk.byteLength}`);
+      dataChannel.send(chunk);
+      offset += chunkSize;
+      const transfer = transfers.get(fileId);
+      if (transfer) {
+        transfer.sentSize = Math.min(offset, totalSize);
+        const progress = (transfer.sentSize / totalSize) * 100;
+        updateProgress(fileId, progress, `Sending ${file.name} (${(transfer.sentSize / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`, 'send');
         setTimeout(sendNextChunk, 10);
-      } else {
-        dataChannel.send(JSON.stringify({ type: 'end' }));
-        updateProgress(100, `Sent ${file.name}`);
       }
     }
     sendNextChunk();
   }).catch(error => {
     console.error('Error reading file buffer:', error);
     document.getElementById('status').textContent = 'Error sending file';
+    transfers.delete(fileId);
   });
 }
 
-function receiveFileWithProgress() {
-  if (receivedChunks.length > 0) {
-    const receivedSize = receivedChunks.reduce((sum, chunk) => sum + (chunk.byteLength || 0), 0);
-    const progress = totalSize > 0 ? (receivedSize / totalSize) * 100 : 100;
-    console.log(`Finalizing download: receivedSize: ${receivedSize}, totalSize: ${totalSize}, progress: ${progress}%`);
-    updateProgress(progress, `Finalizing ${expectedFileName}...`);
-    
-    const blob = new Blob(receivedChunks);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = expectedFileName || 'downloaded_file';
-    a.click();
-    URL.revokeObjectURL(url);
-
-    updateProgress(100, `${expectedFileName} downloaded successfully!`);
-    receivedChunks = [];
-    totalSize = 0;
+function receiveFileWithProgress(fileId) {
+  const transfer = transfers.get(fileId);
+  if (!transfer || transfer.chunks.length === 0) {
+    console.warn(`No valid chunks for ${fileId}, skipping download`);
+    transfers.delete(fileId);
     isDownloading = false;
     processDownloadQueue();
-  } else {
-    console.warn('No valid chunks received, skipping download');
-    isDownloading = false;
-    processDownloadQueue();
+    return;
   }
+
+  const receivedSize = transfer.receivedSize;
+  const progress = transfer.totalSize > 0 ? (receivedSize / transfer.totalSize) * 100 : 100;
+  console.log(`Finalizing download for ${fileId}: receivedSize: ${receivedSize}, totalSize: ${transfer.totalSize}, progress: ${progress}%`);
+  updateProgress(fileId, progress, `Finalizing ${transfer.fileName}...`, 'receive');
+  
+  const blob = new Blob(transfer.chunks);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = transfer.fileName || 'downloaded_file';
+  a.click();
+  URL.revokeObjectURL(url);
+
+  updateProgress(fileId, 100, `${transfer.fileName} downloaded successfully!`, 'receive');
+  isDownloading = false;
+  processDownloadQueue();
 }
 
 window.onload = registerDevice;
