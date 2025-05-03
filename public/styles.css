@@ -92,54 +92,74 @@ button:hover {
   margin: 10px 0;
   font-size: 16px;
   text-align: center;
-  color: #333;
+  color: #E0E0E0;
+  position: relative;
+  display: block !important;
+}
+
+/* Container voor meerdere voortgangsbalken */
+#progressContainer {
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 /* Voortgangsbalk */
-#progress.progress-bar {
-  max-width: 1200px;
-  margin: 0 auto 10px;
+.progress-bar {
+  max-width: 100%;
+  margin: 10px 0;
   height: 16px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 20px;
-  display: none; /* Verborgen totdat download start */
+  display: none; /* Hidden until activated */
   overflow: hidden;
-  visibility: visible !important; /* Force visibility */
-  opacity: 1 !important; /* Prevent fading */
-  position: relative;}
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: relative;
+  z-index: 1;
+}
 
 /* Voortgangsvulling */
-#progressFill.progress-fill {
+.progress-fill {
   height: 100%;
   background: linear-gradient(to right, #6C63FF, #FF6B6B);
   box-shadow: 0 0 10px #6C63FF;
-  width: 0%; /* Start op 0% */
-  transition: width 0.3s ease-in-out; /* Soepele voortgangsanimatie */
+  width: 0%;
+  transition: width 0.3s ease-in-out;
   position: relative;
+  z-index: 2;
 }
 
 /* Voortgangstekst */
-#progressText {
+.progress-text {
   position: absolute;
-  left: 10px; /* Start on the unfilled side */
   top: 50%;
   transform: translateY(-50%);
   font-size: 12px;
-  color: white;
   font-weight: bold;
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.5); /* Improve readability */
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+  z-index: 3;
+}
+
+/* Kleuren voor verzenden (rood) en ontvangen (groen) */
+.progress-text.send {
+  color: #FF6B6B; /* Rood voor verzenden */
+}
+.progress-text.receive {
+  color: #00FF00; /* Groen voor ontvangen */
 }
 
 /* Mobiele optimalisatie */
 @media (max-width: 600px) {
-  #progress.progress-bar {
+  #progressContainer {
     max-width: 90%;
-    margin: 10px auto;
   }
 
-  #progressText {
+  .progress-bar {
+    margin: 10px 0;
+  }
+
+  .progress-text {
     font-size: 10px;
-    right: 5px;
   }
 
   #status.notification {
