@@ -8,8 +8,8 @@ let targetId;
 let sharedFilesMap = new Map();
 let pendingCandidates = [];
 let isDownloading = false;
-let isSharing = true; // New flag to control sharing state
-const transfers = new Map(); // Track multiple transfers: { fileId: { fileName, totalSize, receivedSize/sentSize, chunks, progressBarId, direction } }
+let isSharing = true; // Control sharing state
+const transfers = new Map(); // Track transfers: { fileId: { fileName, totalSize, receivedSize/sentSize, chunks, progressBarId, direction } }
 let downloadQueue = [];
 let files = [];
 
@@ -24,7 +24,7 @@ function createProgressBar(fileId, fileName, direction) {
   const html = `
     <div id="${barId}" class="progress-bar">
       <div id="${barId}-fill" class="progress-fill"></div>
-      <span id="${barId}-text" class="progress-text ${direction}">${direction === 'send' ? 'Sending' : 'Receiving'} ${fileName}: 0%</span>
+      <span id="${barId}-text" class="progress-text ${direction}">${direction === 'send' ? 'Sending' : 'Receiving'} ${fileName} (0%)</span>
     </div>
   `;
   container.insertAdjacentHTML('beforeend', html);
@@ -50,15 +50,11 @@ function updateProgress(fileId, percentage, message, direction) {
   progressBar.style.visibility = 'visible';
   progressBar.style.opacity = '1';
   progressFill.style.width = `${safePercentage}%`;
-  progressText.textContent = `${direction === 'send' ? 'Sending' : 'Receiving'} ${transfers.get(fileId)?.fileName || 'File'}: ${Math.round(safePercentage)}%`;
+  progressText.textContent = `${direction === 'send' ? 'Sending' : 'Receiving'} ${transfers.get(fileId)?.fileName || 'File'} (${Math.round(safePercentage)}%)`;
   status.textContent = message;
 
-  const textOffset = Math.min(safePercentage + 5, 90);
-  progressText.style.left = `${textOffset}%`;
-  progressText.style.right = 'auto';
-
   const computedStyle = getComputedStyle(progressBar);
-  console.log(`Progress bar styles for ${fileId}: display=${computedStyle.display}, visibility=${computedStyle.visibility}, opacity=${computedStyle.opacity}, width=${progressFill.style.width}, textLeft=${progressText.style.left}`);
+  console.log(`Progress bar styles for ${fileId}: display=${computedStyle.display}, visibility=${computedStyle.visibility}, opacity=${computedStyle.opacity}, width=${progressFill.style.width}`);
 
   if (safePercentage >= 100) {
     setTimeout(() => {
@@ -287,31 +283,34 @@ function stopSharing() {
   isSharing = false;
   sharedFilesMap.clear();
   document.getElementById('deviceFiles').innerHTML = '';
-  document.getElementById('otherFiles').innerHTML = '';
   document.getElementById('status').textContent = 'File sharing stopped.';
   console.log('Stopped sharing, notifying peers');
 
-  // Notify all active transfers to stop
+  // Cancel only sending transfers
   for (const [fileId, transfer] of transfers) {
-    if (transfer.direction === 'send' && dataChannel?.readyState === 'open') {
-      dataChannel.send(JSON.stringify({ type: 'stop', fileId }));
+    if (transfer.direction === 'send') {
+      if (dataChannel?.readyState === 'open') {
+        dataChannel.send(JSON.stringify({ type: 'stop', fileId, fileName: transfer.fileName }));
+      }
+      const progressBar = document.getElementById(`progress-${fileId}`);
+      if (progressBar) progressBar.remove();
+      transfers.delete(fileId);
     }
-    const progressBar = document.getElementById(`progress-${fileId}`);
-    if (progressBar) progressBar.remove();
-    transfers.delete(fileId);
   }
 
-  // Send stopSharing to server and close data channel
+  // Notify server and close sending connections
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'stopSharing' }));
   }
-  if (dataChannel) {
-    dataChannel.close();
-    dataChannel = null;
-  }
-  if (peerConnection) {
-    peerConnection.close();
-    peerConnection = null;
+  if (peerConnection && dataChannel?.readyState === 'open') {
+    // Close only if no receiving transfers
+    const hasReceiving = Array.from(transfers.values()).some(t => t.direction === 'receive');
+    if (!hasReceiving) {
+      dataChannel.close();
+      peerConnection.close();
+      dataChannel = null;
+      peerConnection = null;
+    }
   }
 }
 
@@ -539,7 +538,9 @@ function handleDataChannelMessage(e) {
         const progress = transfer.totalSize > 0 ? (transfer.receivedSize / transfer.totalSize) * 100 : 0;
         updateProgress(fileId, progress, `Receiving ${transfer.fileName} (${(transfer.receivedSize / 1024).toFixed(2)} KB of ${(transfer.totalSize / 1024).toFixed(2)} KB)...`, 'receive');
       } else {
-        console.warn(`Received invalid chunk for ${fileId}, type: ${e.data?.constructor?.name || 'unknown'}, byteLength: ${e.data?.byteLength || 'undefined'}, raw:`, e.data);
+        console.warn(`Received invalid chunk for ${fileId}, type: ${e.data?.constructor?.name || 'unknown'}, byteLength: ${e.data?.byteLength || 'undefined'}, isArrayBuffer: ${e.data instanceof ArrayBuffer}, raw:`, e.data);
+        // Fallback: accumulate chunk to test if Firefox sends partial data
+        transfer.chunks.push(e.data);
       }
     } else {
       console.warn(`No transfer found for chunk, fileId: ${fileId}`);
