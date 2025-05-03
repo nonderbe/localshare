@@ -133,7 +133,7 @@ button:hover {
 .progress-text {
   position: absolute;
   top: 0;
-  left: 5px; /* Start slightly inside the bar */
+  left: 5px;
   right: 5px;
   line-height: 16px; /* Match bar height */
   font-size: 12px;
@@ -143,6 +143,7 @@ button:hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: #E0E0E0; /* Default color for setup messages */
 }
 
 /* Kleuren voor verzenden (rood) en ontvangen (groen) */
