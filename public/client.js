@@ -109,20 +109,27 @@ function updateProgress(percentage, message) {
     return;
   }
 
-  // Zorg dat percentage geen NaN is
+  // Ensure percentage is valid
   const safePercentage = isNaN(percentage) || percentage < 0 ? 0 : Math.min(percentage, 100);
-  console.log(`Updating progress: ${safePercentage}% - ${message} (display: ${progressBar.style.display})`);
+  console.log(`Updating progress: ${safePercentage}% - ${message}`);
 
   // Force progress bar visibility
   progressBar.style.display = 'block';
   progressBar.style.visibility = 'visible';
+  progressBar.style.opacity = '1';
   progressFill.style.width = `${safePercentage}%`;
   progressText.textContent = `${Math.round(safePercentage)}%`;
   status.textContent = message;
 
+  // Dynamically position progressText in the unfilled portion
+  const textOffset = Math.min(safePercentage + 5, 90); // Position text just right of filled portion, max 90%
+  progressText.style.left = `${textOffset}%`;
+  progressText.style.right = 'auto';
+  progressText.style.color = safePercentage < 50 ? '#E0E0E0' : '#FFFFFF'; // Adjust color for visibility
+
   // Debug CSS properties
   const computedStyle = getComputedStyle(progressBar);
-  console.log(`Progress bar styles: display=${getComputedStyle(progressBar).display}, width=${progressFill.style.width}`);
+  console.log(`Progress bar styles: display=${computedStyle.display}, visibility=${computedStyle.visibility}, opacity=${computedStyle.opacity}, width=${progressFill.style.width}, textLeft=${progressText.style.left}`);
 
   if (safePercentage >= 100) {
     setTimeout(() => {
@@ -471,15 +478,22 @@ function handleDataChannelMessage(e) {
       receiveFileWithProgress();
     }
   } else {
-    receivedChunks.push(e.data);
-    const receivedSize = receivedChunks.reduce((sum, chunk) => sum + (chunk.byteLength || 0), 0);
-    console.log(`Received chunk, receivedSize: ${receivedSize}, totalSize: ${totalSize}`);
-    
-    // Update progress even if totalSize is not yet set
-    const progress = totalSize > 0 ? (receivedSize / totalSize) * 100 : 0;
-    const statusMessage = totalSize > 0 
-      ? `Receiving ${expectedFileName} (${(receivedSize / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`      : `Receiving ${expectedFileName} (waiting for file size)...`;
-    updateProgress(progress, statusMessage);  }
+    // Validate chunk before adding
+    if (e.data && (e.data instanceof ArrayBuffer || e.data instanceof Blob) && e.data.byteLength > 0) {
+      receivedChunks.push(e.data);
+      const receivedSize = receivedChunks.reduce((sum, chunk) => sum + (chunk.byteLength || 0), 0);
+      console.log(`Received valid chunk, type: ${e.data.constructor.name}, byteLength: ${e.data.byteLength}, receivedSize: ${receivedSize}, totalSize: ${totalSize}`);
+      
+      // Calculate progress and status message
+      const progress = totalSize > 0 ? (receivedSize / totalSize) * 100 : 0;
+      const statusMessage = totalSize > 0 
+        ? `Receiving ${expectedFileName} (${(receivedSize / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`
+        : `Receiving ${expectedFileName} (waiting for file size)...`;
+      updateProgress(progress, statusMessage);
+    } else {
+      console.warn(`Received invalid chunk, type: ${e.data?.constructor?.name || 'unknown'}, byteLength: ${e.data?.byteLength || 'undefined'}`);
+    }
+  }
 }
 
 function sendFileWithProgress(file) {
@@ -534,7 +548,7 @@ function receiveFileWithProgress() {
     isDownloading = false;
     processDownloadQueue();
   } else {
-    console.warn('No chunks received, skipping download');
+    console.warn('No valid chunks received, skipping download');
     isDownloading = false;
     processDownloadQueue();
   }
