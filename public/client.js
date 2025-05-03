@@ -36,9 +36,8 @@ function updateProgress(fileId, percentage, message, direction) {
   const progressBar = document.getElementById(`progress-${fileId}`);
   const progressFill = document.getElementById(`progress-${fileId}-fill`);
   const progressText = document.getElementById(`progress-${fileId}-text`);
-  const status = document.getElementById('status');
 
-  if (!progressBar || !progressFill || !progressText || !status) {
+  if (!progressBar || !progressFill || !progressText) {
     console.error('Progress elements not found for fileId:', fileId);
     return;
   }
@@ -55,7 +54,6 @@ function updateProgress(fileId, percentage, message, direction) {
   } else {
     progressText.textContent = `${direction === 'send' ? 'Sending' : 'Receiving'} ${transfers.get(fileId)?.fileName || 'File'} at ${Math.round(safePercentage)}%`;
   }
-  status.textContent = message;
 
   const computedStyle = getComputedStyle(progressBar);
   console.log(`Progress bar styles for ${fileId}: display=${computedStyle.display}, visibility=${computedStyle.visibility}, opacity=${computedStyle.opacity}, width=${progressFill.style.width}`);
@@ -109,10 +107,10 @@ document.addEventListener('DOMContentLoaded', () => {
     e.stopPropagation();
     const checkboxes = otherFilesList.querySelectorAll('input[type="checkbox"]:checked');
     if (checkboxes.length === 0) {
-      document.getElementById('status').textContent = 'Please select at least one file to download.';
+      console.log('No files selected for download');
       return;
     }
-    document.getElementById('status').textContent = `Starting download of ${checkboxes.length} file${checkboxes.length > 1 ? 's' : ''}...`;
+    console.log(`Starting download of ${checkboxes.length} file${checkboxes.length > 1 ? 's' : ''}`);
     checkboxes.forEach(checkbox => {
       const fileName = checkbox.name.replace('download-', '');
       const fileOwner = files.find(f => f.name === fileName)?.ownerId;
@@ -120,7 +118,6 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadQueue.push({ ownerId: fileOwner, fileName });
       } else {
         console.error(`Owner not found for file: ${fileName}`);
-        document.getElementById('status').textContent = `Error: Owner not found for ${fileName}`;
       }
     });
     processDownloadQueue();
@@ -139,7 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
       listItem.innerHTML = `<span>${file.name}</span>`;
       deviceFilesList.appendChild(listItem);
       sharedFilesMap.set(file.name, { file, ownerId: myId });
-      shareFilesToNetwork(file);
+      shareFilesToNetwork();
     });
   }
 });
@@ -173,6 +170,10 @@ async function registerDevice() {
     ws.send(JSON.stringify({ type: 'register' }));
     updateDeviceCount(1);
     checkFolderSupport();
+    // Re-share all files in sharedFilesMap on reconnect
+    if (sharedFilesMap.size > 0) {
+      shareFilesToNetwork();
+    }
   };
 
   ws.onerror = (error) => {
@@ -221,6 +222,7 @@ function updateFileLists(sharedFiles) {
   const deviceFilesList = document.getElementById('deviceFiles');
   const otherFilesList = document.getElementById('otherFiles');
 
+  // Update local files (deviceFilesList)
   deviceFilesList.innerHTML = '';
   const localFiles = Array.from(sharedFilesMap.values())
     .filter(f => f.ownerId === myId)
@@ -237,26 +239,28 @@ function updateFileLists(sharedFiles) {
     });
   }
 
+  // Update other devices' files (otherFilesList)
+  const existingFiles = new Map(files.map(f => [f.name + f.ownerId, f]));
+  const newFiles = sharedFiles.filter(file => file.ownerId !== myId);
+  newFiles.forEach(file => {
+    existingFiles.set(file.name + file.ownerId, file);
+  });
+
   otherFilesList.innerHTML = '';
-  const otherFilesExist = sharedFiles.some(file => file.ownerId !== myId);
-  if (!otherFilesExist && sharedFiles.length === 0) {
+  const otherFiles = Array.from(existingFiles.values()).filter(file => file.ownerId !== myId);
+  if (otherFiles.length === 0) {
     const li = document.createElement('li');
     li.textContent = 'No files available yet. Connect another device to see shared files.';
     otherFilesList.appendChild(li);
   } else {
-    sharedFiles.forEach(file => {
-      if (file.ownerId !== myId) {
-        const li = document.createElement('li');
-        const sizeInKB = (file.size / 1024).toFixed(2);
-        li.innerHTML = `<span>${file.name} (${sizeInKB} KB)</span><input type="checkbox" name="download-${file.name}">`;
-        otherFilesList.appendChild(li);
-        sharedFilesMap.set(file.name, { ...file, ownerId: file.ownerId });
-      }
+    otherFiles.forEach(file => {
+      const li = document.createElement('li');
+      const sizeInKB = (file.size / 1024).toFixed(2);
+      li.innerHTML = `<span>${file.name} (${sizeInKB} KB)</span><input type="checkbox" name="download-${file.name}">`;
+      otherFilesList.appendChild(li);
+      sharedFilesMap.set(file.name, { ...file, ownerId: file.ownerId });
     });
   }
-
-  const fileList = document.getElementById('fileList');
-  if (fileList) fileList.style.display = 'none';
 }
 
 function shareFiles() {
@@ -270,24 +274,13 @@ function shareFiles() {
     listItem.innerHTML = `<span>${file.name}</span>`;
     document.getElementById('deviceFiles').appendChild(listItem);
   });
-  const fileMetadata = files.map(file => ({
-    name: file.name,
-    size: file.size,
-    timestamp: Date.now()
-  }));
-  if (files.length > 0 && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'share', files: fileMetadata }));
-    document.getElementById('status').textContent = 'Files shared!';
-  } else {
-    console.error('No files or WebSocket not open');
-  }
+  shareFilesToNetwork();
 }
 
 function stopSharing() {
   isSharing = false;
   sharedFilesMap.clear();
   document.getElementById('deviceFiles').innerHTML = '';
-  document.getElementById('status').textContent = 'File sharing stopped.';
   console.log('Stopped sharing, notifying peers');
 
   // Cancel only sending transfers
@@ -317,10 +310,20 @@ function stopSharing() {
   }
 }
 
-function shareFilesToNetwork(file) {
-  const fileMetadata = { name: file.name, size: file.size, timestamp: Date.now() };
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'share', files: [fileMetadata] }));
+function shareFilesToNetwork() {
+  const fileMetadata = Array.from(sharedFilesMap.values())
+    .filter(f => f.ownerId === myId)
+    .map(f => ({
+      name: f.file.name,
+      size: f.file.size,
+      timestamp: Date.now(),
+      ownerId: myId
+    }));
+  if (fileMetadata.length > 0 && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'share', files: fileMetadata }));
+    console.log('Shared files:', fileMetadata);
+  } else {
+    console.error('No files to share or WebSocket not open');
   }
 }
 
@@ -370,7 +373,6 @@ function setupWebRTC(onOpenCallback) {
   dataChannel.onopen = () => {
     console.log('DataChannel opened');
     updateProgress(fileId, 0, `Connection established for ${transfers.get(fileId)?.fileName}`, 'setup');
-    document.getElementById('status').textContent = 'Connection established!';
     if (onOpenCallback) onOpenCallback();
   };
   dataChannel.onmessage = handleDataChannelMessage;
@@ -465,7 +467,6 @@ function handleSignal(data) {
       dataChannel.onopen = () => {
         console.log('Incoming DataChannel opened');
         updateProgress(fileId, 0, `Incoming connection established for ${transfers.get(fileId)?.fileName}`, 'setup');
-        document.getElementById('status').textContent = 'Connection established!';
       };
       dataChannel.onmessage = handleDataChannelMessage;
       dataChannel.onerror = (error) => console.error('Incoming DataChannel error:', error);
@@ -563,7 +564,7 @@ function handleDataChannelMessage(e) {
       transfers.delete(message.fileId);
       const progressBar = document.getElementById(`progress-${message.fileId}`);
       if (progressBar) progressBar.remove();
-      document.getElementById('status').textContent = `Transfer of ${message.fileName || 'file'} stopped by sender.`;
+      console.log(`Transfer of ${message.fileName || 'file'} stopped by sender`);
     }
   } else {
     const fileId = Array.from(transfers.keys()).find(id => transfers.get(id).direction === 'receive') || Date.now().toString();
@@ -577,7 +578,6 @@ function handleDataChannelMessage(e) {
         const progress = transfer.totalSize > 0 ? (transfer.receivedSize / transfer.totalSize) * 100 : 0;
         updateProgress(fileId, progress, `Receiving ${transfer.fileName} (${(transfer.receivedSize / 1024).toFixed(2)} KB of ${(transfer.totalSize / 1024).toFixed(2)} KB)...`, 'receive');
       } else if (e.data instanceof Blob && e.data.size > 0) {
-        // Handle Firefox Blob chunks
         transfer.chunks.push(e.data);
         transfer.receivedSize += e.data.size;
         console.log(`Received valid Blob chunk for ${fileId}, size: ${e.data.size}, receivedSize: ${transfer.receivedSize}, totalSize: ${transfer.totalSize}`);
@@ -638,7 +638,7 @@ function sendFileWithProgress(file, fileId = Date.now().toString()) {
     sendNextChunk();
   }).catch(error => {
     console.error('Error reading file buffer:', error);
-    document.getElementById('status').textContent = 'Error sending file';
+    console.log('Error sending file');
     transfers.delete(fileId);
   });
 }
