@@ -357,9 +357,14 @@ function setupWebRTC(onOpenCallback) {
     peerConnection = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'turn:numb.viagenie.ca:3478', username: 'webrtc@live.com', credential: 'muazkh' }
       ]
     });
+  /*  peerConnection = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'turn:numb.viagenie.ca:3478', username: 'webrtc@live.com', credential: 'muazkh' }
+      ]
+    });*/
     console.log('RTCPeerConnection created');
     updateProgress(fileId, 0, `WebRTC connection initialized for ${transfers.get(fileId)?.fileName}...`, 'setup');
   } catch (error) {
