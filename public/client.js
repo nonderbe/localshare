@@ -637,7 +637,7 @@ function sendFileWithProgress(file, fileId = Date.now().toString()) {
         transfer.sentSize = Math.min(offset, totalSize);
         const progress = (transfer.sentSize / totalSize) * 100;
         updateProgress(fileId, progress, `Sending ${file.name} (${(transfer.sentSize / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`, 'send');
-        setTimeout(sendNextChunk, 10);  // Set to 10 for better stability, to 0 for higher speed
+        setTimeout(sendNextChunk, 5);  // Set to 10 for better stability, to 0 for higher speed
       }
     }
     sendNextChunk();
