@@ -604,7 +604,7 @@ function sendFileWithProgress(file, fileId = Date.now().toString()) {
     return;
   }
 
-  const chunkSize = 16384;
+  const chunkSize = 32768;
   file.arrayBuffer().then(buffer => {
     const totalSize = buffer.byteLength;
     transfers.set(fileId, {
