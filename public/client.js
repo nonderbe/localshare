@@ -13,24 +13,9 @@ const transfers = new Map(); // Track transfers: { fileId: { fileName, totalSize
 let downloadQueue = [];
 let files = [];
 
-// OUDE CODE
-//const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-//const hostname = window.location.hostname;
-//const serverUrl = `${protocol}//${hostname}`;
-
-// === Configuratie ===
-const WS_PORT = 10000;                    // Verander dit later naar 443 als je wss:// gebruikt
-const USE_SECURE_WS = false;              // Zet later op true als je HTTPS + wss:// hebt
-
-// === Dynamische WebSocket URL ===
-const protocol = USE_SECURE_WS ? 'wss:' : 'ws:';
+const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const hostname = window.location.hostname;
-const portPart = (window.location.port && window.location.port !== '80' && window.location.port !== '443')
-  ? `:${WS_PORT}` 
-  : '';  // Geen poort tonen als we op standaardpoort 80/443 draaien
-
-const serverUrl = `${protocol}//${hostname}${portPart}`;
-
+const serverUrl = `${protocol}//${hostname}`;
 console.log(`WebSocket URL: ${serverUrl}`);
 
 // Create a unique progress bar for a file transfer
