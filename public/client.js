@@ -456,7 +456,7 @@ function handleSignal(data) {
     peerConnection = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'turn:numb.viagenie.ca:3478', username: 'webrtc@live.com', credential: 'muazkh' }
+        { urls: `turn:${hostname}:3478`, username: 'localshare', credential: 'fbc7d1ec0a39eb804d78c8f7cf53bf7fa5d92dc0' }
       ]
     });
     updateProgress(fileId, 0, `Received offer for ${transfers.get(fileId)?.fileName}`, 'setup');
@@ -546,14 +546,21 @@ function handleDataChannelMessage(e) {
       if (file) sendFileWithProgress(file, message.fileId);
     } else if (message.type === 'fileSize') {
       const fileId = message.fileId || Date.now().toString();
-      transfers.set(fileId, {
-        fileName: message.fileName,
-        totalSize: message.size || 0,
-        receivedSize: 0,
-        chunks: [],
-        progressBarId: createProgressBar(fileId, message.fileName, 'receive'),
-        direction: 'receive'
-      });
+      const existing = transfers.get(fileId);
+      if (existing) {
+        // Transfer entry already created by processDownloadQueue — just fill in the size
+        existing.totalSize = message.size || 0;
+        existing.fileName = message.fileName;
+      } else {
+        transfers.set(fileId, {
+          fileName: message.fileName,
+          totalSize: message.size || 0,
+          receivedSize: 0,
+          chunks: [],
+          progressBarId: createProgressBar(fileId, message.fileName, 'receive'),
+          direction: 'receive'
+        });
+      }
       console.log(`Set totalSize for ${fileId} to ${message.size} bytes`);
       updateProgress(fileId, 0, `Receiving ${message.fileName} (0.00 KB of ${(message.size / 1024).toFixed(2)} KB)...`, 'receive');
     } else if (message.type === 'end') {
@@ -593,54 +600,74 @@ function handleDataChannelMessage(e) {
   }
 }
 
-function sendFileWithProgress(file, fileId = Date.now().toString()) {
+async function sendFileWithProgress(file, fileId = Date.now().toString()) {
   if (!isSharing || dataChannel?.readyState !== 'open') {
     console.warn('Cannot send file: not sharing or data channel closed');
     return;
   }
 
-  const chunkSize = 65536;
-  file.arrayBuffer().then(buffer => {
-    const totalSize = buffer.byteLength;
-    transfers.set(fileId, {
-      fileName: file.name,
-      totalSize: totalSize,
-      sentSize: 0,
-      progressBarId: createProgressBar(fileId, file.name, 'send'),
-      direction: 'send'
-    });
-    dataChannel.send(JSON.stringify({ type: 'fileSize', size: totalSize, fileName: file.name, fileId }));
-    console.log(`Sent fileSize for ${fileId}: ${totalSize} bytes`);
-    
-    let offset = 0;
-    updateProgress(fileId, 0, `Sending ${file.name} (0.00 KB of ${(totalSize / 1024).toFixed(2)} KB)...`, 'send');
+  const CHUNK_SIZE = 65536;       // 64 KB per chunk
+  const HIGH_WATERMARK = 1048576; // pause sending when buffer exceeds 1 MB
+  const LOW_WATERMARK = 262144;   // resume when buffer drains to 256 KB
 
-    function sendNextChunk() {
-      if (!isSharing || offset >= totalSize || dataChannel.readyState !== 'open') {
-        if (offset >= totalSize) {
-          dataChannel.send(JSON.stringify({ type: 'end', fileId }));
-          updateProgress(fileId, 100, `Sent ${file.name}`, 'send');
-        }
+  const totalSize = file.size;
+  let offset = 0;
+  let paused = false;
+
+  transfers.set(fileId, {
+    fileName: file.name,
+    totalSize,
+    sentSize: 0,
+    progressBarId: createProgressBar(fileId, file.name, 'send'),
+    direction: 'send'
+  });
+
+  dataChannel.send(JSON.stringify({ type: 'fileSize', size: totalSize, fileName: file.name, fileId }));
+  console.log(`Sent fileSize for ${fileId}: ${totalSize} bytes`);
+  dataChannel.bufferedAmountLowThreshold = LOW_WATERMARK;
+  updateProgress(fileId, 0, `Sending ${file.name} (0.00 KB of ${(totalSize / 1024).toFixed(2)} KB)...`, 'send');
+
+  async function pump() {
+    while (offset < totalSize) {
+      if (!isSharing || dataChannel.readyState !== 'open') return;
+
+      if (dataChannel.bufferedAmount >= HIGH_WATERMARK) {
+        paused = true;
+        return; // onbufferedamountlow will restart pump()
+      }
+
+      const end = Math.min(offset + CHUNK_SIZE, totalSize);
+      let chunk;
+      try {
+        chunk = await file.slice(offset, end).arrayBuffer();
+        dataChannel.send(chunk);
+      } catch (err) {
+        console.error(`Send error for ${fileId}:`, err);
         return;
       }
-      const chunk = buffer.slice(offset, offset + chunkSize);
-      console.log(`Sending chunk for ${fileId}, offset: ${offset}, size: ${chunk.byteLength}`);
-      dataChannel.send(chunk);
-      offset += chunkSize;
+
+      offset = end;
       const transfer = transfers.get(fileId);
       if (transfer) {
-        transfer.sentSize = Math.min(offset, totalSize);
-        const progress = (transfer.sentSize / totalSize) * 100;
-        updateProgress(fileId, progress, `Sending ${file.name} (${(transfer.sentSize / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`, 'send');
-        setTimeout(sendNextChunk, 10);  // Set to 10 for better stability, to 0 for higher speed
+        transfer.sentSize = offset;
+        const progress = (offset / totalSize) * 100;
+        updateProgress(fileId, progress, `Sending ${file.name} (${(offset / 1024).toFixed(2)} KB of ${(totalSize / 1024).toFixed(2)} KB)...`, 'send');
       }
     }
-    sendNextChunk();
-  }).catch(error => {
-    console.error('Error reading file buffer:', error);
-    console.log('Error sending file');
-    transfers.delete(fileId);
-  });
+
+    dataChannel.onbufferedamountlow = null;
+    dataChannel.send(JSON.stringify({ type: 'end', fileId }));
+    updateProgress(fileId, 100, `Sent ${file.name}`, 'send');
+  }
+
+  dataChannel.onbufferedamountlow = () => {
+    if (paused) {
+      paused = false;
+      pump();
+    }
+  };
+
+  pump();
 }
 
 function receiveFileWithProgress(fileId) {
