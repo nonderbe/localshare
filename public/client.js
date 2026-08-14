@@ -179,12 +179,12 @@ async function registerDevice() {
 
   ws.onerror = (error) => {
     console.error('WebSocket error:', error);
-    document.getElementById('deviceCount').textContent = 'Failed to connect. Please refresh the page.';
+    document.getElementById('deviceCount').textContent = 'Live device sync unavailable right now — you can still browse LocalShare below.';
   };
 
   ws.onclose = (event) => {
     console.log('WebSocket closed:', event);
-    document.getElementById('deviceCount').textContent = 'Connection lost. Reconnecting...';
+    document.getElementById('deviceCount').textContent = 'Reconnecting to nearby devices...';
     setTimeout(registerDevice, 2000);
   };
 
