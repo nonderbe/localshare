@@ -22,13 +22,22 @@ console.log(`WebSocket URL: ${serverUrl}`);
 function createProgressBar(fileId, fileName, direction) {
   const container = document.getElementById('progressContainer');
   const barId = `progress-${fileId}`;
-  const html = `
-    <div id="${barId}" class="progress-bar">
-      <div id="${barId}-fill" class="progress-fill"></div>
-      <span id="${barId}-text" class="progress-text ${direction}">${direction === 'send' ? 'Sending' : 'Preparing to receive'} ${fileName}</span>
-    </div>
-  `;
-  container.insertAdjacentHTML('beforeend', html);
+
+  const bar = document.createElement('div');
+  bar.id = barId;
+  bar.className = 'progress-bar';
+
+  const fill = document.createElement('div');
+  fill.id = `${barId}-fill`;
+  fill.className = 'progress-fill';
+
+  const text = document.createElement('span');
+  text.id = `${barId}-text`;
+  text.className = `progress-text ${direction}`;
+  text.textContent = `${direction === 'send' ? 'Sending' : 'Preparing to receive'} ${fileName}`;
+
+  bar.append(fill, text);
+  container.appendChild(bar);
   return barId;
 }
 
@@ -113,7 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     console.log(`Starting download of ${checkboxes.length} file${checkboxes.length > 1 ? 's' : ''}`);
     checkboxes.forEach(checkbox => {
-      const fileName = checkbox.name.replace('download-', '');
+      const fileName = checkbox.dataset.fileName;
       const fileOwner = files.find(f => f.name === fileName)?.ownerId;
       if (fileOwner) {
         downloadQueue.push({ ownerId: fileOwner, fileName });
@@ -134,7 +143,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function handleLocalFiles(files) {
     Array.from(files).forEach(file => {
       const listItem = document.createElement('li');
-      listItem.innerHTML = `<span>${file.name}</span>`;
+      const span = document.createElement('span');
+      span.textContent = file.name;
+      listItem.appendChild(span);
       deviceFilesList.appendChild(listItem);
       sharedFilesMap.set(file.name, { file, ownerId: myId });
       shareFilesToNetwork();
@@ -235,7 +246,9 @@ function updateFileLists(sharedFiles) {
   } else {
     localFiles.forEach(file => {
       const li = document.createElement('li');
-      li.innerHTML = `<span>${file.name}</span>`;
+      const span = document.createElement('span');
+      span.textContent = file.name;
+      li.appendChild(span);
       deviceFilesList.appendChild(li);
     });
   }
@@ -257,7 +270,12 @@ function updateFileLists(sharedFiles) {
     otherFiles.forEach(file => {
       const li = document.createElement('li');
       const sizeInKB = (file.size / 1024).toFixed(2);
-      li.innerHTML = `<span>${file.name} (${sizeInKB} KB)</span><input type="checkbox" name="download-${file.name}">`;
+      const span = document.createElement('span');
+      span.textContent = `${file.name} (${sizeInKB} KB)`;
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.dataset.fileName = file.name;
+      li.append(span, checkbox);
       otherFilesList.appendChild(li);
       sharedFilesMap.set(file.name, { ...file, ownerId: file.ownerId });
     });
@@ -272,7 +290,9 @@ function shareFiles() {
   files.forEach(file => {
     sharedFilesMap.set(file.name, { file, ownerId: myId });
     const listItem = document.createElement('li');
-    listItem.innerHTML = `<span>${file.name}</span>`;
+    const span = document.createElement('span');
+    span.textContent = file.name;
+    listItem.appendChild(span);
     document.getElementById('deviceFiles').appendChild(listItem);
   });
   shareFilesToNetwork();
