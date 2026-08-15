@@ -154,7 +154,7 @@ app.post('/submit-suggestion', (req, res) => {
 
   const mailOptions = {
     from: process.env.EMAIL_USER,
-    to: 'niels.onderbeke@gmail.com',
+    to: process.env.NOTIFY_EMAIL,
     subject: '[LocalShare] User Suggestion',
     text: suggestion
   };
