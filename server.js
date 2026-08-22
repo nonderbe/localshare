@@ -13,6 +13,37 @@ if (!fs.existsSync(publicPath)) {
   process.exit(1);
 }
 
+app.set('trust proxy', true);
+
+// Redirect non-canonical hosts/paths (apex domain, http, /index.html) to the
+// canonical https://www.local-share.com URL used in canonical tags and the
+// sitemap, so Google consolidates duplicate URLs instead of leaving them
+// unindexed as separate alternates.
+app.use((req, res, next) => {
+  const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  let host = req.hostname;
+  let urlPath = req.path;
+  let redirectNeeded = false;
+
+  if (host === 'local-share.com') {
+    host = 'www.local-share.com';
+    redirectNeeded = true;
+  }
+  if (urlPath.endsWith('/index.html')) {
+    urlPath = urlPath.slice(0, -'index.html'.length);
+    redirectNeeded = true;
+  }
+  if (!isHttps) {
+    redirectNeeded = true;
+  }
+
+  if (redirectNeeded) {
+    const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    return res.redirect(301, `https://${host}${urlPath}${query}`);
+  }
+  next();
+});
+
 // Middleware voor statische bestanden en JSON-parsing
 app.use(express.static(publicPath));
 app.use(express.json());
