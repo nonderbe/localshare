@@ -2,6 +2,8 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const { spawn } = require('child_process');
 const nodemailer = require('nodemailer');
 
 const app = express();
@@ -42,6 +44,51 @@ app.use((req, res, next) => {
     return res.redirect(301, `https://${host}${urlPath}${query}`);
   }
   next();
+});
+
+// GitHub webhook: on push to main, pull and restart via pm2. Must be
+// registered before express.json() so it can read the raw request body
+// (needed to verify GitHub's HMAC signature).
+const DEPLOY_WEBHOOK_SECRET = process.env.DEPLOY_WEBHOOK_SECRET;
+
+app.post('/deploy-webhook', express.raw({ type: 'application/json', limit: '1mb' }), (req, res) => {
+  if (!DEPLOY_WEBHOOK_SECRET) {
+    console.error('Deploy webhook called but DEPLOY_WEBHOOK_SECRET is not configured');
+    return res.status(503).end();
+  }
+
+  const signature = req.headers['x-hub-signature-256'];
+  const expected = 'sha256=' + crypto.createHmac('sha256', DEPLOY_WEBHOOK_SECRET).update(req.body).digest('hex');
+  const signatureBuf = Buffer.from(typeof signature === 'string' ? signature : '');
+  const expectedBuf = Buffer.from(expected);
+  if (signatureBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(signatureBuf, expectedBuf)) {
+    return res.status(401).end();
+  }
+
+  if (req.headers['x-github-event'] === 'ping') {
+    return res.status(200).end('pong');
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(req.body.toString('utf8'));
+  } catch (err) {
+    return res.status(400).end();
+  }
+
+  if (req.headers['x-github-event'] !== 'push' || payload.ref !== 'refs/heads/main') {
+    return res.status(200).end('ignored');
+  }
+
+  res.status(202).end('deploying');
+
+  const log = fs.openSync('/var/log/localshare-deploy.log', 'a');
+  const child = spawn('/bin/sh', ['-c', 'git pull origin main && pm2 restart local-share.com'], {
+    cwd: __dirname,
+    detached: true,
+    stdio: ['ignore', log, log],
+  });
+  child.unref();
 });
 
 // Middleware voor statische bestanden en JSON-parsing
