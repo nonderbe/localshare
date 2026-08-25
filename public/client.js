@@ -234,15 +234,11 @@ document.addEventListener('DOMContentLoaded', () => {
     checkboxes.forEach(checkbox => checkbox.checked = isChecked);
   });
 
-  function handleLocalFiles(files) {
-    Array.from(files).forEach(file => {
-      const listItem = document.createElement('li');
-      const span = document.createElement('span');
-      span.textContent = file.name;
-      listItem.appendChild(span);
-      deviceFilesList.appendChild(listItem);
+  function handleLocalFiles(fileList) {
+    Array.from(fileList).forEach(file => {
       sharedFilesMap.set(file.name, { file, ownerId: myId });
     });
+    updateFileLists(files);
     // Announce once for the whole batch, not once per file (a folder of hundreds of
     // files would otherwise re-send the full, growing file list on every iteration).
     shareFilesToNetwork();
@@ -355,9 +351,15 @@ function updateFileLists(sharedFiles) {
   } else {
     localFiles.forEach(file => {
       const li = document.createElement('li');
+      li.className = 'own-shared-item';
       const span = document.createElement('span');
       span.textContent = file.name;
-      li.appendChild(span);
+      const stopBtn = document.createElement('button');
+      stopBtn.className = 'stop-share-btn';
+      stopBtn.textContent = '×';
+      stopBtn.title = 'Stop sharing';
+      stopBtn.addEventListener('click', () => stopSharingFile(file.name));
+      li.append(span, stopBtn);
       deviceFilesList.appendChild(li);
     });
   }
@@ -411,7 +413,7 @@ function updateTextLists(sharedTexts) {
   } else {
     localTexts.forEach(t => {
       const li = document.createElement('li');
-      li.className = 'own-text-item';
+      li.className = 'own-shared-item';
       const span = document.createElement('span');
       span.className = 'text-content';
       span.textContent = t.text;
@@ -498,15 +500,11 @@ function shareFiles() {
   console.log('shareFiles() called');
   const fileInput = document.getElementById('fileInput');
   const folderInput = document.getElementById('folderInput');
-  const files = Array.from(fileInput.files).concat(Array.from(folderInput.files || []));
-  files.forEach(file => {
+  const selectedFiles = Array.from(fileInput.files).concat(Array.from(folderInput.files || []));
+  selectedFiles.forEach(file => {
     sharedFilesMap.set(file.name, { file, ownerId: myId });
-    const listItem = document.createElement('li');
-    const span = document.createElement('span');
-    span.textContent = file.name;
-    listItem.appendChild(span);
-    document.getElementById('deviceFiles').appendChild(listItem);
   });
+  updateFileLists(files);
   shareFilesToNetwork();
 }
 
@@ -532,6 +530,31 @@ function stopSharing() {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'stopSharing' }));
   }
+}
+
+function stopSharingFile(name) {
+  sharedFilesMap.delete(name);
+  console.log('Stopped sharing file:', name);
+
+  // Cancel any in-flight send of this specific file only, same as stopSharing() does
+  // for all files, but scoped to just the one being stopped.
+  for (const [, conn] of incomingConnections) {
+    if (!conn.sendFileIds || conn.sendFileIds.size === 0) continue;
+    conn.sendFileIds.forEach(fileId => {
+      const transfer = transfers.get(fileId);
+      if (transfer?.fileName !== name) return;
+      if (conn.dc?.readyState === 'open') {
+        conn.dc.send(JSON.stringify({ type: 'stop', fileId, fileName: name }));
+      }
+      cleanupTransfer(fileId);
+      conn.sendFileIds.delete(fileId);
+    });
+  }
+
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'stopSharingFile', name }));
+  }
+  updateFileLists(files);
 }
 
 function shareFilesToNetwork() {

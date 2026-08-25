@@ -152,6 +152,11 @@ wss.on('connection', (ws) => {
       clientInfo.sharedFiles = [];
       console.log('Client stopped sharing:', clientInfo.id);
       broadcastUpdate();
+    } else if (data.type === 'stopSharingFile') {
+      const clientInfo = clients.get(ws);
+      clientInfo.sharedFiles = clientInfo.sharedFiles.filter(file => file.name !== data.name);
+      console.log('Client stopped sharing file:', clientInfo.id, 'name:', data.name);
+      broadcastUpdate();
     } else if (data.type === 'shareText') {
       const clientInfo = clients.get(ws);
       clientInfo.sharedTexts.push({
