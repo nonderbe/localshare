@@ -84,6 +84,93 @@ button:hover {
   border-radius: 10px;
   display: flex;
   justify-content: space-between;
+  align-items: center;
+}
+
+/* Tabs */
+.tab-switcher {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 15px;
+}
+.tab-button {
+  padding: 10px 20px;
+  background: transparent;
+  color: #E0E0E0;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: none;
+}
+.tab-button:hover {
+  box-shadow: none;
+  transform: none;
+  border-color: #6C63FF;
+}
+.tab-button.active {
+  background: linear-gradient(45deg, #6C63FF, #FF6B6B);
+  color: white;
+  border-color: transparent;
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* Text sharing */
+.text-share-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  align-items: stretch;
+}
+.text-input {
+  width: 100%;
+  min-height: 140px;
+  padding: 15px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #E0E0E0;
+  font-family: inherit;
+  font-size: 16px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.text-input::placeholder { color: rgba(224, 224, 224, 0.5); }
+
+/* Text list items can hold a full multi-line message, so top-align instead of the
+   file lists' vertically-centered short single-line rows. */
+#deviceTexts li, #otherTexts li {
+  align-items: flex-start;
+}
+.text-content {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-right: 12px;
+}
+
+.own-text-item {
+  position: relative;
+  padding-right: 45px !important;
+}
+.stop-share-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  line-height: 1;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: #FF6B6B;
+  box-shadow: none;
+  font-size: 16px;
+}
+.stop-share-btn:hover {
+  box-shadow: none;
+  transform: none;
+  background: #FF6B6B;
+  color: white;
 }
 
 /* Voortgangsbalk */

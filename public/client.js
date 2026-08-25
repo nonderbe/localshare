@@ -14,6 +14,22 @@ const outgoingConnections = new Map(); // peerId -> { pc, dc, pendingCandidates,
 // Connections to peers who are downloading FROM us (they sent the offer).
 const incomingConnections = new Map(); // peerId -> { pc, dc, pendingCandidates, sendFileIds }
 
+// Text sharing: id -> { text, ownerId, timestamp, label, length }. Full text content
+// never touches the server -- only the label/length metadata does (see shareText()).
+let sharedTextsMap = new Map();
+let textCounter = 0;
+let lastSharedTexts = [];
+// Full content of others' text items we've already fetched P2P, keyed by id -- once
+// present here the item is rendered in full instead of behind its label, and repeat
+// copies are served from this cache instead of re-fetching.
+const revealedTexts = new Map();
+
+// Separate connection maps for text fetches, kept fully independent from the file
+// transfer connections above so a text Copy never tears down an in-flight file
+// download to/from the same peer (or vice versa).
+const outgoingTextConnections = new Map(); // peerId -> { pc, dc, pendingCandidates, textId }
+const incomingTextConnections = new Map(); // peerId -> { pc, dc, pendingCandidates }
+
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const hostname = window.location.hostname;
 const serverUrl = `${protocol}//${hostname}`;
@@ -113,6 +129,46 @@ function teardownIncoming(peerId, conn) {
     conn.sendFileIds.forEach(fileId => cleanupTransfer(fileId));
     conn.sendFileIds.clear();
   }
+}
+
+// Closes a text connection's data channel first, only closing the peer connection
+// once that channel's own closing handshake has completed (or immediately if there's
+// no channel to wait on). Closing the peer connection right away, before the data
+// channel's SCTP stream-reset finishes, is what was surfacing as an RTCErrorEvent on
+// the other peer's channel -- waiting for it lets both sides close cleanly.
+function closeTextConnectionGracefully(conn) {
+  const { pc, dc } = conn;
+  if (!dc || dc.readyState === 'closed') {
+    try { pc?.close(); } catch (err) { /* already closed */ }
+    return;
+  }
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    try { pc.close(); } catch (err) { /* already closed */ }
+  };
+  dc.onclose = finish;
+  setTimeout(finish, 2000); // safety net in case the channel never reports closed
+  try {
+    dc.close();
+  } catch (err) {
+    finish();
+  }
+}
+
+function teardownOutgoingText(peerId, conn) {
+  if (outgoingTextConnections.get(peerId) === conn) {
+    outgoingTextConnections.delete(peerId);
+  }
+  closeTextConnectionGracefully(conn);
+}
+
+function teardownIncomingText(peerId, conn) {
+  if (incomingTextConnections.get(peerId) === conn) {
+    incomingTextConnections.delete(peerId);
+  }
+  closeTextConnectionGracefully(conn);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -228,6 +284,12 @@ async function registerDevice() {
     if (sharedFilesMap.size > 0) {
       shareFilesToNetwork();
     }
+    // Re-share all locally-owned text items on reconnect (mirrors file re-share above)
+    Array.from(sharedTextsMap.entries())
+      .filter(([, t]) => t.ownerId === myId)
+      .forEach(([id, t]) => {
+        ws.send(JSON.stringify({ type: 'shareText', id, label: t.label, length: t.length, timestamp: t.timestamp }));
+      });
   };
 
   ws.onerror = (error) => {
@@ -258,11 +320,16 @@ function handleMessage(event) {
   if (data.type === 'register') {
     myId = data.clientId;
   } else if (data.type === 'update') {
-    console.log('Processing update - Device count:', data.deviceCount, 'Files:', data.sharedFiles);
+    console.log('Processing update - Device count:', data.deviceCount, 'Files:', data.sharedFiles, 'Texts:', data.sharedTexts);
     updateDeviceCount(data.deviceCount);
     updateFileLists(data.sharedFiles);
+    updateTextLists(data.sharedTexts || []);
   } else if (data.type === 'signal') {
-    handleSignal(data);
+    if (data.kind === 'text') {
+      handleTextSignal(data);
+    } else {
+      handleSignal(data);
+    }
   }
 }
 
@@ -323,6 +390,108 @@ function updateFileLists(sharedFiles) {
       sharedFilesMap.set(file.name, { ...file, ownerId: file.ownerId });
     });
   }
+}
+
+function updateTextLists(sharedTexts) {
+  lastSharedTexts = sharedTexts;
+  const deviceTextsList = document.getElementById('deviceTexts');
+  const otherTextsList = document.getElementById('otherTexts');
+
+  // Update local texts (deviceTextsList) -- rendered from our own map, same pattern
+  // as updateFileLists uses sharedFilesMap, so it stays correct even before the
+  // server's broadcast round-trips back.
+  deviceTextsList.innerHTML = '';
+  const localTexts = Array.from(sharedTextsMap.entries())
+    .filter(([, t]) => t.ownerId === myId)
+    .map(([id, t]) => ({ id, ...t }));
+  if (localTexts.length === 0) {
+    const li = document.createElement('li');
+    li.textContent = 'No text shared yet. Type something above to start.';
+    deviceTextsList.appendChild(li);
+  } else {
+    localTexts.forEach(t => {
+      const li = document.createElement('li');
+      li.className = 'own-text-item';
+      const span = document.createElement('span');
+      span.className = 'text-content';
+      span.textContent = t.text;
+      const stopBtn = document.createElement('button');
+      stopBtn.className = 'stop-share-btn';
+      stopBtn.textContent = '×';
+      stopBtn.title = 'Stop sharing';
+      stopBtn.addEventListener('click', () => stopSharingText(t.id));
+      li.append(span, stopBtn);
+      deviceTextsList.appendChild(li);
+    });
+  }
+
+  // Update other devices' texts (otherTextsList) -- shows just the label until the
+  // user fetches the full text P2P (see requestText()), then shows it in full.
+  otherTextsList.innerHTML = '';
+  const otherTexts = sharedTexts.filter(t => t.ownerId !== myId);
+  if (otherTexts.length === 0) {
+    const li = document.createElement('li');
+    li.textContent = 'No text available yet. Connect another device to see shared text.';
+    otherTextsList.appendChild(li);
+  } else {
+    otherTexts.forEach(t => {
+      const li = document.createElement('li');
+      const span = document.createElement('span');
+      span.className = 'text-content';
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'btn-share';
+      copyBtn.textContent = 'Copy';
+      const revealedText = revealedTexts.get(t.id);
+      if (revealedText !== undefined) {
+        span.textContent = revealedText;
+        copyBtn.addEventListener('click', () => copyTextToClipboard(revealedText, copyBtn));
+      } else {
+        span.textContent = `${t.label} (${t.length} char${t.length === 1 ? '' : 's'})`;
+        copyBtn.addEventListener('click', () => requestText(t.ownerId, t.id, copyBtn));
+      }
+      li.append(span, copyBtn);
+      otherTextsList.appendChild(li);
+    });
+  }
+}
+
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
+  });
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.id === `tab-${tabName}`);
+  });
+}
+
+function shareText() {
+  const textInput = document.getElementById('textInput');
+  const text = textInput.value;
+  if (!text.trim()) return;
+
+  textCounter += 1;
+  const id = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  const label = `Message ${textCounter}`;
+  const timestamp = Date.now();
+
+  sharedTextsMap.set(id, { text, ownerId: myId, timestamp, label, length: text.length });
+  textInput.value = '';
+
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'shareText', id, label, length: text.length, timestamp }));
+    console.log('Shared text:', id, label);
+  } else {
+    console.error('WebSocket not open, text will be re-shared on reconnect');
+  }
+  updateTextLists(lastSharedTexts);
+}
+
+function stopSharingText(id) {
+  sharedTextsMap.delete(id);
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'stopSharingText', id }));
+  }
+  updateTextLists(lastSharedTexts.filter(t => t.id !== id));
 }
 
 function shareFiles() {
@@ -488,6 +657,215 @@ function requestFile(ownerId, fileName, fileId) {
       updateProgress(fileId, 0, `WebRTC setup failed for ${fileName}`, 'setup');
       teardownOutgoing(ownerId, conn);
     });
+}
+
+// Fetches one shared text item's full content P2P from its owner, kept deliberately
+// separate from requestFile()'s chunked transfer protocol/connections above -- text
+// is small and single-shot, and this way a Copy click can never interfere with an
+// in-flight file transfer to/from the same peer.
+function requestText(ownerId, textId, button) {
+  console.log('requestText called - ownerId:', ownerId, 'textId:', textId);
+
+  const stale = outgoingTextConnections.get(ownerId);
+  if (stale) teardownOutgoingText(ownerId, stale);
+
+  let pc;
+  try {
+    pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+      ]
+    });
+  } catch (error) {
+    console.error('Error creating RTCPeerConnection for text:', error);
+    flashButton(button, 'Error');
+    return;
+  }
+
+  const conn = { pc, dc: null, pendingCandidates: [], textId };
+  outgoingTextConnections.set(ownerId, conn);
+
+  const dc = pc.createDataChannel('textTransfer');
+  conn.dc = dc;
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Copying...';
+  }
+
+  dc.onopen = () => {
+    if (dc.readyState === 'open') {
+      dc.send(JSON.stringify({ type: 'requestText', textId }));
+    }
+  };
+  dc.onmessage = (e) => handleTextDataChannelMessage(e, conn, ownerId, button);
+  dc.onerror = (error) => {
+    console.error('Text data channel error:', error);
+    flashButton(button, 'Error');
+  };
+  dc.onclose = () => teardownOutgoingText(ownerId, conn);
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) {
+      ws.send(JSON.stringify({
+        type: 'signal',
+        targetId: ownerId,
+        kind: 'text',
+        signal: { candidate: e.candidate },
+      }));
+    }
+  };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      teardownOutgoingText(ownerId, conn);
+    }
+  };
+
+  pc.createOffer()
+    .then(offer => pc.setLocalDescription(offer))
+    .then(() => {
+      ws.send(JSON.stringify({
+        type: 'signal',
+        targetId: ownerId,
+        kind: 'text',
+        signal: pc.localDescription,
+      }));
+    })
+    .catch(error => {
+      console.error('WebRTC setup error for text:', error);
+      flashButton(button, 'Error');
+      teardownOutgoingText(ownerId, conn);
+    });
+}
+
+function handleTextDataChannelMessage(e, conn, peerId, button) {
+  const message = JSON.parse(e.data);
+  if (message.type === 'requestText') {
+    const entry = sharedTextsMap.get(message.textId);
+    if (entry && entry.ownerId === myId) {
+      conn.dc.send(JSON.stringify({ type: 'textData', textId: message.textId, text: entry.text }));
+    } else {
+      conn.dc.send(JSON.stringify({ type: 'textUnavailable', textId: message.textId }));
+    }
+  } else if (message.type === 'textData') {
+    revealedTexts.set(message.textId, message.text);
+    copyTextToClipboard(message.text, button);
+    // Re-render once the copy confirmation has had time to show, swapping the item
+    // over to its full-text (revealed) presentation.
+    setTimeout(() => updateTextLists(lastSharedTexts), 1500);
+    teardownOutgoingText(peerId, conn);
+  } else if (message.type === 'textUnavailable') {
+    flashButton(button, 'Unavailable');
+    teardownOutgoingText(peerId, conn);
+  }
+}
+
+async function copyTextToClipboard(text, button) {
+  try {
+    await navigator.clipboard.writeText(text);
+    flashButton(button, 'Copied!');
+  } catch (error) {
+    console.error('Clipboard write failed:', error);
+    flashButton(button, 'Copy failed');
+  }
+}
+
+function flashButton(button, message) {
+  if (!button) return;
+  const original = 'Copy';
+  button.textContent = message;
+  setTimeout(() => {
+    button.textContent = original;
+    button.disabled = false;
+  }, 1500);
+}
+
+function handleTextSignal(data) {
+  console.log('Received text signal from:', data.fromId);
+  const peerId = data.fromId;
+
+  if (data.signal.type === 'offer') {
+    const stalePrev = incomingTextConnections.get(peerId);
+    if (stalePrev) teardownIncomingText(peerId, stalePrev);
+
+    let pc;
+    try {
+      pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: `turn:${hostname}:3478`, username: 'localshare', credential: 'fbc7d1ec0a39eb804d78c8f7cf53bf7fa5d92dc0' }
+        ]
+      });
+    } catch (error) {
+      console.error('Error creating RTCPeerConnection for incoming text offer:', error);
+      return;
+    }
+
+    const conn = { pc, dc: null, pendingCandidates: [] };
+    incomingTextConnections.set(peerId, conn);
+
+    pc.ondatachannel = (e) => {
+      conn.dc = e.channel;
+      conn.dc.onmessage = (e2) => handleTextDataChannelMessage(e2, conn, peerId);
+      conn.dc.onerror = (error) => console.error('Incoming text data channel error:', error);
+      conn.dc.onclose = () => teardownIncomingText(peerId, conn);
+    };
+    pc.onicecandidate = (e) => {
+      if (e.candidate) {
+        ws.send(JSON.stringify({
+          type: 'signal',
+          targetId: peerId,
+          kind: 'text',
+          signal: { candidate: e.candidate },
+        }));
+      }
+    };
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        teardownIncomingText(peerId, conn);
+      }
+    };
+
+    pc.setRemoteDescription(new RTCSessionDescription(data.signal))
+      .then(() => {
+        conn.pendingCandidates.forEach(candidate => pc.addIceCandidate(new RTCIceCandidate(candidate)));
+        conn.pendingCandidates = [];
+        return pc.createAnswer();
+      })
+      .then(answer => pc.setLocalDescription(answer))
+      .then(() => {
+        ws.send(JSON.stringify({
+          type: 'signal',
+          targetId: peerId,
+          kind: 'text',
+          signal: pc.localDescription,
+        }));
+      })
+      .catch(error => {
+        console.error('Error handling text offer:', error);
+        teardownIncomingText(peerId, conn);
+      });
+
+  } else if (data.signal.type === 'answer') {
+    const conn = outgoingTextConnections.get(peerId);
+    if (!conn) return;
+    conn.pc.setRemoteDescription(new RTCSessionDescription(data.signal))
+      .then(() => {
+        conn.pendingCandidates.forEach(candidate => conn.pc.addIceCandidate(new RTCIceCandidate(candidate)));
+        conn.pendingCandidates = [];
+      })
+      .catch(error => console.error('Error handling text answer:', error));
+
+  } else if (data.signal.candidate) {
+    const conn = outgoingTextConnections.get(peerId) || incomingTextConnections.get(peerId);
+    if (!conn) return;
+    if (conn.pc.remoteDescription) {
+      conn.pc.addIceCandidate(new RTCIceCandidate(data.signal.candidate))
+        .catch(error => console.error('Error adding text ICE candidate:', error));
+    } else {
+      conn.pendingCandidates.push(data.signal.candidate);
+    }
+  }
 }
 
 function handleSignal(data) {

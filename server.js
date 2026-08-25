@@ -113,7 +113,7 @@ wss.on('connection', (ws) => {
     console.log('Received message from', clientId, ':', data);
     if (data.type === 'register') {
       console.log('Client registered - ID:', clientId);
-      clients.set(ws, { id: clientId, sharedFiles: [] });
+      clients.set(ws, { id: clientId, sharedFiles: [], sharedTexts: [] });
       ws.send(JSON.stringify({ type: 'register', clientId }));
       broadcastUpdate();
     } else if (data.type === 'share') {
@@ -152,6 +152,21 @@ wss.on('connection', (ws) => {
       clientInfo.sharedFiles = [];
       console.log('Client stopped sharing:', clientInfo.id);
       broadcastUpdate();
+    } else if (data.type === 'shareText') {
+      const clientInfo = clients.get(ws);
+      clientInfo.sharedTexts.push({
+        id: data.id,
+        label: data.label,
+        length: data.length,
+        timestamp: data.timestamp,
+      });
+      console.log('Client shared text:', clientInfo.id, 'id:', data.id);
+      broadcastUpdate();
+    } else if (data.type === 'stopSharingText') {
+      const clientInfo = clients.get(ws);
+      clientInfo.sharedTexts = clientInfo.sharedTexts.filter(text => text.id !== data.id);
+      console.log('Client stopped sharing text:', clientInfo.id, 'id:', data.id);
+      broadcastUpdate();
     } else if (data.type === 'signal') {
       const targetClient = [...clients.entries()].find(
         ([_, info]) => info.id === data.targetId
@@ -161,6 +176,7 @@ wss.on('connection', (ws) => {
         targetClient[0].send(JSON.stringify({
           type: 'signal',
           fromId: clientId,
+          kind: data.kind,
           signal: data.signal,
         }));
       } else {
@@ -191,6 +207,10 @@ function broadcastUpdate() {
       const age = now - file.timestamp;
       return age < EXPIRATION_TIME;
     });
+    client.sharedTexts = client.sharedTexts.filter(text => {
+      const age = now - text.timestamp;
+      return age < EXPIRATION_TIME;
+    });
   });
   const deviceCount = devices.length;
   const sharedFiles = devices.flatMap(client => client.sharedFiles.map(file => ({
@@ -198,7 +218,13 @@ function broadcastUpdate() {
     size: file.size,
     ownerId: client.id,
   })));
-  console.log('Broadcasting to all - Devices:', deviceCount, 'Files:', sharedFiles);
+  const sharedTexts = devices.flatMap(client => client.sharedTexts.map(text => ({
+    id: text.id,
+    label: text.label,
+    length: text.length,
+    ownerId: client.id,
+  })));
+  console.log('Broadcasting to all - Devices:', deviceCount, 'Files:', sharedFiles, 'Texts:', sharedTexts);
   console.log('Connected clients:', [...clients.keys()].map(ws => clients.get(ws).id));
   clients.forEach((_, clientWs) => {
     try {
@@ -206,6 +232,7 @@ function broadcastUpdate() {
         type: 'update',
         deviceCount,
         sharedFiles,
+        sharedTexts,
       }));
     } catch (error) {
       console.error('Failed to send update to client:', clients.get(clientWs)?.id, error);
