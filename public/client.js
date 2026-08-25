@@ -207,6 +207,10 @@ document.addEventListener('DOMContentLoaded', () => {
     handleLocalFiles(e.target.files);
   });
 
+  document.getElementById('folderInput').addEventListener('change', (e) => {
+    handleLocalFiles(e.target.files);
+  });
+
   document.getElementById('downloadSelected')?.addEventListener('click', (e) => {
     e.stopPropagation();
     const checkboxes = otherFilesList.querySelectorAll('input[type="checkbox"]:checked');
@@ -358,7 +362,12 @@ function updateFileLists(sharedFiles) {
       stopBtn.className = 'stop-share-btn';
       stopBtn.textContent = '×';
       stopBtn.title = 'Stop sharing';
-      stopBtn.addEventListener('click', () => stopSharingFile(file.name));
+      // Stop propagation so this click doesn't bubble to #deviceDragDropArea's own
+      // click handler, which opens the file picker.
+      stopBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        stopSharingFile(file.name);
+      });
       li.append(span, stopBtn);
       deviceFilesList.appendChild(li);
     });
