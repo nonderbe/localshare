@@ -1,17 +1,18 @@
 console.log('client.js loaded successfully');
 
 let ws;
-let peerConnection;
-let dataChannel;
 let myId;
-let targetId;
 let sharedFilesMap = new Map();
-let pendingCandidates = [];
 let isDownloading = false;
 let isSharing = true;
-const transfers = new Map(); // Track transfers: { fileId: { fileName, totalSize, receivedSize/sentSize, chunks, progressBarId, direction } }
-let downloadQueue = [];
+const transfers = new Map(); // Track transfers: { fileId: { fileName, totalSize, receivedSize/sentSize, ..., progressBarId, direction } }
+const downloadQueue = [];
 let files = [];
+
+// Connections to peers we're downloading FROM (we sent the offer).
+const outgoingConnections = new Map(); // peerId -> { pc, dc, pendingCandidates, fileId }
+// Connections to peers who are downloading FROM us (they sent the offer).
+const incomingConnections = new Map(); // peerId -> { pc, dc, pendingCandidates, sendFileIds }
 
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const hostname = window.location.hostname;
@@ -65,15 +66,52 @@ function updateProgress(fileId, percentage, message, direction) {
     progressText.textContent = `${direction === 'send' ? 'Sending' : 'Receiving'} ${transfers.get(fileId)?.fileName || 'File'} at ${Math.round(safePercentage)}%`;
   }
 
-  const computedStyle = getComputedStyle(progressBar);
-  console.log(`Progress bar styles for ${fileId}: display=${computedStyle.display}, visibility=${computedStyle.visibility}, opacity=${computedStyle.opacity}, width=${progressFill.style.width}`);
-
   if (safePercentage >= 100 && direction !== 'setup') {
     setTimeout(() => {
       progressBar.remove();
       transfers.delete(fileId);
       console.log(`Removed progress bar for ${fileId}`);
     }, 1000);
+  }
+}
+
+// Remove a transfer's bookkeeping and its progress bar, regardless of how it ended.
+function cleanupTransfer(fileId) {
+  transfers.delete(fileId);
+  const progressBar = document.getElementById(`progress-${fileId}`);
+  if (progressBar) progressBar.remove();
+}
+
+function closeConnectionObjects(conn) {
+  try { conn.dc?.close(); } catch (err) { /* already closed */ }
+  try { conn.pc?.close(); } catch (err) { /* already closed */ }
+}
+
+// Tear down an outgoing (we-are-downloading) connection. Safe to call multiple times /
+// from stale event handlers: only mutates the map if it still points at this exact
+// connection object, and only cleans up + requeues if this connection still owns a fileId.
+function teardownOutgoing(peerId, conn) {
+  closeConnectionObjects(conn);
+  if (outgoingConnections.get(peerId) === conn) {
+    outgoingConnections.delete(peerId);
+  }
+  if (conn.fileId) {
+    cleanupTransfer(conn.fileId);
+    conn.fileId = null;
+    isDownloading = false;
+    processDownloadQueue();
+  }
+}
+
+// Tear down an incoming (peer-is-downloading-from-us) connection. Same safety properties.
+function teardownIncoming(peerId, conn) {
+  closeConnectionObjects(conn);
+  if (incomingConnections.get(peerId) === conn) {
+    incomingConnections.delete(peerId);
+  }
+  if (conn.sendFileIds && conn.sendFileIds.size > 0) {
+    conn.sendFileIds.forEach(fileId => cleanupTransfer(fileId));
+    conn.sendFileIds.clear();
   }
 }
 
@@ -123,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log(`Starting download of ${checkboxes.length} file${checkboxes.length > 1 ? 's' : ''}`);
     checkboxes.forEach(checkbox => {
       const fileName = checkbox.dataset.fileName;
-      const fileOwner = files.find(f => f.name === fileName)?.ownerId;
+      const fileOwner = checkbox.dataset.ownerId;
       if (fileOwner) {
         downloadQueue.push({ ownerId: fileOwner, fileName });
       } else {
@@ -148,8 +186,10 @@ document.addEventListener('DOMContentLoaded', () => {
       listItem.appendChild(span);
       deviceFilesList.appendChild(listItem);
       sharedFilesMap.set(file.name, { file, ownerId: myId });
-      shareFilesToNetwork();
     });
+    // Announce once for the whole batch, not once per file (a folder of hundreds of
+    // files would otherwise re-send the full, growing file list on every iteration).
+    shareFilesToNetwork();
   }
 });
 
@@ -163,7 +203,9 @@ function processDownloadQueue() {
     fileName,
     totalSize: 0,
     receivedSize: 0,
-    chunks: [],
+    pendingChunks: [],
+    pendingBytes: 0,
+    blobParts: [],
     progressBarId: createProgressBar(fileId, fileName, 'receive'),
     direction: 'receive'
   });
@@ -225,7 +267,7 @@ function handleMessage(event) {
 }
 
 function updateDeviceCount(count) {
-  document.getElementById('deviceCount').textContent = 
+  document.getElementById('deviceCount').textContent =
     `${count} device${count === 1 ? '' : 's'} connected`;
 }
 
@@ -275,6 +317,7 @@ function updateFileLists(sharedFiles) {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.dataset.fileName = file.name;
+      checkbox.dataset.ownerId = file.ownerId;
       li.append(span, checkbox);
       otherFilesList.appendChild(li);
       sharedFilesMap.set(file.name, { ...file, ownerId: file.ownerId });
@@ -304,30 +347,21 @@ function stopSharing() {
   document.getElementById('deviceFiles').innerHTML = '';
   console.log('Stopped sharing, notifying peers');
 
-  // Cancel only sending transfers
-  for (const [fileId, transfer] of transfers) {
-    if (transfer.direction === 'send') {
-      if (dataChannel?.readyState === 'open') {
-        dataChannel.send(JSON.stringify({ type: 'stop', fileId, fileName: transfer.fileName }));
+  // Cancel every in-flight send, on every incoming connection, and notify each peer.
+  for (const [, conn] of incomingConnections) {
+    if (!conn.sendFileIds || conn.sendFileIds.size === 0) continue;
+    conn.sendFileIds.forEach(fileId => {
+      const transfer = transfers.get(fileId);
+      if (conn.dc?.readyState === 'open') {
+        conn.dc.send(JSON.stringify({ type: 'stop', fileId, fileName: transfer?.fileName }));
       }
-      const progressBar = document.getElementById(`progress-${fileId}`);
-      if (progressBar) progressBar.remove();
-      transfers.delete(fileId);
-    }
+      cleanupTransfer(fileId);
+    });
+    conn.sendFileIds.clear();
   }
 
-  // Notify server and close sending connections
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'stopSharing' }));
-  }
-  if (peerConnection && dataChannel?.readyState === 'open') {
-    const hasReceiving = Array.from(transfers.values()).some(t => t.direction === 'receive');
-    if (!hasReceiving) {
-      dataChannel.close();
-      peerConnection.close();
-      dataChannel = null;
-      peerConnection = null;
-    }
   }
 }
 
@@ -350,278 +384,297 @@ function shareFilesToNetwork() {
 
 function requestFile(ownerId, fileName, fileId) {
   console.log('requestFile called - ownerId:', ownerId, 'fileName:', fileName, 'fileId:', fileId);
-  targetId = ownerId;
-  if (peerConnection) {
-    peerConnection.close();
-    peerConnection = null;
-    dataChannel = null;
-  }
-  updateProgress(fileId, 0, `Creating WebRTC offer for ${fileName}...`, 'setup');
-  setupWebRTC(() => {
-    if (dataChannel?.readyState === 'open') {
-      updateProgress(fileId, 0, `Requesting ${fileName} from peer...`, 'setup');
-      dataChannel.send(JSON.stringify({ type: 'request', fileName, fileId }));
-    } else {
-      console.error('DataChannel not open, cannot send request');
-      updateProgress(fileId, 0, `Failed to establish connection for ${fileName}`, 'setup');
-      transfers.delete(fileId);
-      isDownloading = false;
-      processDownloadQueue();
-    }
-  });
-}
 
-function setupWebRTC(onOpenCallback) {
-  console.log('Setting up WebRTC connection');
-  const fileId = Array.from(transfers.keys()).find(id => transfers.get(id).direction === 'receive');
+  // Replace any stale/previous connection to this specific peer. This never touches
+  // connections to other peers, so an unrelated transfer elsewhere in the swarm is
+  // no longer collateral damage.
+  const stale = outgoingConnections.get(ownerId);
+  if (stale) teardownOutgoing(ownerId, stale);
+
+  updateProgress(fileId, 0, `Creating WebRTC offer for ${fileName}...`, 'setup');
+
+  let pc;
   try {
-    peerConnection = new RTCPeerConnection({
+    pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
       ]
     });
     console.log('RTCPeerConnection created');
-    updateProgress(fileId, 0, `WebRTC connection initialized for ${transfers.get(fileId)?.fileName}...`, 'setup');
   } catch (error) {
     console.error('Error creating RTCPeerConnection:', error);
-    updateProgress(fileId, 0, `Failed to initialize WebRTC for ${transfers.get(fileId)?.fileName}`, 'setup');
-    return;
-  }
-  dataChannel = peerConnection.createDataChannel('fileTransfer', { binaryType: 'arraybuffer' });
-  console.log('DataChannel created with binaryType: arraybuffer');
-
-  dataChannel.onopen = () => {
-    console.log('DataChannel opened');
-    updateProgress(fileId, 0, `Connection established for ${transfers.get(fileId)?.fileName}`, 'setup');
-    if (onOpenCallback) onOpenCallback();
-  };
-  dataChannel.onmessage = handleDataChannelMessage;
-  dataChannel.onerror = (error) => {
-    console.error('DataChannel error:', error);
-    updateProgress(fileId, 0, `Data channel error for ${transfers.get(fileId)?.fileName}`, 'setup');
-  };
-  dataChannel.onclose = () => {
-    console.log('DataChannel closed');
-    updateProgress(fileId, 0, `Connection closed for ${transfers.get(fileId)?.fileName}`, 'setup');
+    updateProgress(fileId, 0, `Failed to initialize WebRTC for ${fileName}`, 'setup');
+    cleanupTransfer(fileId);
     isDownloading = false;
     processDownloadQueue();
+    return;
+  }
+
+  const conn = { pc, dc: null, pendingCandidates: [], fileId };
+  outgoingConnections.set(ownerId, conn);
+
+  const dc = pc.createDataChannel('fileTransfer', { binaryType: 'arraybuffer' });
+  conn.dc = dc;
+  console.log('DataChannel created with binaryType: arraybuffer');
+
+  dc.onopen = () => {
+    console.log('DataChannel opened');
+    updateProgress(fileId, 0, `Connection established for ${fileName}`, 'setup');
+    if (dc.readyState === 'open') {
+      updateProgress(fileId, 0, `Requesting ${fileName} from peer...`, 'setup');
+      dc.send(JSON.stringify({ type: 'request', fileName, fileId }));
+    }
+  };
+  dc.onmessage = (e) => handleDataChannelMessage(e, conn, ownerId);
+  dc.onerror = (error) => {
+    console.error('DataChannel error:', error);
+    updateProgress(fileId, 0, `Data channel error for ${fileName}`, 'setup');
+  };
+  dc.onclose = () => {
+    console.log('DataChannel closed');
+    updateProgress(fileId, 0, `Connection closed for ${fileName}`, 'setup');
+    teardownOutgoing(ownerId, conn);
   };
 
-  peerConnection.onicecandidate = (e) => {
+  pc.onicecandidate = (e) => {
     if (e.candidate) {
       console.log('ICE candidate found:', e.candidate.candidate);
       ws.send(JSON.stringify({
         type: 'signal',
-        targetId,
+        targetId: ownerId,
         signal: { candidate: e.candidate },
       }));
-      updateProgress(fileId, 0, `Sending ICE candidates for ${transfers.get(fileId)?.fileName}...`, 'setup');
+      updateProgress(fileId, 0, `Sending ICE candidates for ${fileName}...`, 'setup');
     }
   };
-  peerConnection.onconnectionstatechange = () => {
-    console.log('Connection state:', peerConnection.connectionState);
-    if (peerConnection.connectionState === 'disconnected') {
-      updateProgress(fileId, 0, `Connection disconnected for ${transfers.get(fileId)?.fileName}`, 'setup');
-      peerConnection.close();
-      peerConnection = null;
-      dataChannel = null;
-      isDownloading = false;
-      processDownloadQueue();
+  pc.onconnectionstatechange = () => {
+    console.log('Connection state:', pc.connectionState);
+    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      updateProgress(fileId, 0, `Connection disconnected for ${fileName}`, 'setup');
+      teardownOutgoing(ownerId, conn);
     }
   };
-  peerConnection.oniceconnectionstatechange = () => {
-    console.log('ICE connection state:', peerConnection.iceConnectionState);
-    updateProgress(fileId, 0, `ICE connection state: ${peerConnection.iceConnectionState} for ${transfers.get(fileId)?.fileName}`, 'setup');
+  pc.oniceconnectionstatechange = () => {
+    console.log('ICE connection state:', pc.iceConnectionState);
+    updateProgress(fileId, 0, `ICE connection state: ${pc.iceConnectionState} for ${fileName}`, 'setup');
   };
-  peerConnection.onsignalingstatechange = () => {
-    console.log('Signaling state:', peerConnection.signalingState);
-    updateProgress(fileId, 0, `Signaling state: ${peerConnection.signalingState} for ${transfers.get(fileId)?.fileName}`, 'setup');
+  pc.onsignalingstatechange = () => {
+    console.log('Signaling state:', pc.signalingState);
+    updateProgress(fileId, 0, `Signaling state: ${pc.signalingState} for ${fileName}`, 'setup');
   };
-  peerConnection.onicecandidateerror = (e) => {
+  pc.onicecandidateerror = (e) => {
     console.error('ICE candidate error:', e.errorText, 'URL:', e.url);
-    updateProgress(fileId, 0, `ICE candidate error for ${transfers.get(fileId)?.fileName}`, 'setup');
+    updateProgress(fileId, 0, `ICE candidate error for ${fileName}`, 'setup');
   };
 
   console.log('Creating offer');
-  peerConnection.createOffer()
+  pc.createOffer()
     .then(offer => {
       console.log('Offer created:', offer.sdp.substring(0, 100) + '...');
-      updateProgress(fileId, 0, `Offer created for ${transfers.get(fileId)?.fileName}`, 'setup');
-      return peerConnection.setLocalDescription(offer);
+      updateProgress(fileId, 0, `Offer created for ${fileName}`, 'setup');
+      return pc.setLocalDescription(offer);
     })
     .then(() => {
-      console.log('Local description set, sending offer to target:', targetId);
-      updateProgress(fileId, 0, `Sending offer to peer for ${transfers.get(fileId)?.fileName}...`, 'setup');
+      console.log('Local description set, sending offer to target:', ownerId);
+      updateProgress(fileId, 0, `Sending offer to peer for ${fileName}...`, 'setup');
       ws.send(JSON.stringify({
         type: 'signal',
-        targetId,
-        signal: peerConnection.localDescription,
+        targetId: ownerId,
+        signal: pc.localDescription,
       }));
     })
     .catch(error => {
       console.error('WebRTC setup error:', error);
-      updateProgress(fileId, 0, `WebRTC setup failed for ${transfers.get(fileId)?.fileName}`, 'setup');
+      updateProgress(fileId, 0, `WebRTC setup failed for ${fileName}`, 'setup');
+      teardownOutgoing(ownerId, conn);
     });
 }
 
 function handleSignal(data) {
-  console.log('Received signal from:', data.fromId, 'for target:', data.targetId);
-  const fileId = Array.from(transfers.keys()).find(id => transfers.get(id).direction === 'receive');
-  if (data.signal.type === 'offer') {
-    if (peerConnection && peerConnection.signalingState !== 'closed') {
-      peerConnection.close();
-      peerConnection = null;
-      dataChannel = null;
-    }
-    peerConnection = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: `turn:${hostname}:3478`, username: 'localshare', credential: 'fbc7d1ec0a39eb804d78c8f7cf53bf7fa5d92dc0' }
-      ]
-    });
-    updateProgress(fileId, 0, `Received offer for ${transfers.get(fileId)?.fileName}`, 'setup');
+  console.log('Received signal from:', data.fromId);
+  const peerId = data.fromId;
 
-    peerConnection.ondatachannel = (e) => {
-      dataChannel = e.channel;
-      dataChannel.binaryType = 'arraybuffer';
-      dataChannel.onopen = () => {
+  if (data.signal.type === 'offer') {
+    // Replace any stale/previous incoming connection from this specific peer only.
+    const stalePrev = incomingConnections.get(peerId);
+    if (stalePrev) teardownIncoming(peerId, stalePrev);
+
+    let pc;
+    try {
+      pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: `turn:${hostname}:3478`, username: 'localshare', credential: 'fbc7d1ec0a39eb804d78c8f7cf53bf7fa5d92dc0' }
+        ]
+      });
+    } catch (error) {
+      console.error('Error creating RTCPeerConnection for incoming offer:', error);
+      return;
+    }
+
+    const conn = { pc, dc: null, pendingCandidates: [], sendFileIds: new Set() };
+    incomingConnections.set(peerId, conn);
+
+    pc.ondatachannel = (e) => {
+      conn.dc = e.channel;
+      conn.dc.binaryType = 'arraybuffer';
+      conn.dc.onopen = () => {
         console.log('Incoming DataChannel opened');
-        updateProgress(fileId, 0, `Incoming connection established for ${transfers.get(fileId)?.fileName}`, 'setup');
       };
-      dataChannel.onmessage = handleDataChannelMessage;
-      dataChannel.onerror = (error) => console.error('Incoming DataChannel error:', error);
-      dataChannel.onclose = () => console.log('Incoming DataChannel closed');
+      conn.dc.onmessage = (e2) => handleDataChannelMessage(e2, conn, peerId);
+      conn.dc.onerror = (error) => console.error('Incoming DataChannel error:', error);
+      conn.dc.onclose = () => {
+        console.log('Incoming DataChannel closed');
+        teardownIncoming(peerId, conn);
+      };
     };
-    peerConnection.onicecandidate = (e) => {
+    pc.onicecandidate = (e) => {
       if (e.candidate) {
         ws.send(JSON.stringify({
           type: 'signal',
-          targetId: data.fromId,
+          targetId: peerId,
           signal: { candidate: e.candidate },
         }));
-        updateProgress(fileId, 0, `Sending ICE candidates for ${transfers.get(fileId)?.fileName}...`, 'setup');
       }
     };
-    peerConnection.onconnectionstatechange = () => {
-      if (peerConnection.connectionState === 'disconnected') {
-        updateProgress(fileId, 0, `Connection disconnected for ${transfers.get(fileId)?.fileName}`, 'setup');
-        peerConnection.close();
-        peerConnection = null;
-        dataChannel = null;
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        teardownIncoming(peerId, conn);
       }
     };
 
-    peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal))
+    pc.setRemoteDescription(new RTCSessionDescription(data.signal))
       .then(() => {
-        updateProgress(fileId, 0, `Remote description set for ${transfers.get(fileId)?.fileName}`, 'setup');
-        while (pendingCandidates.length > 0) {
-          peerConnection.addIceCandidate(new RTCIceCandidate(pendingCandidates.shift()));
-        }
-        return peerConnection.createAnswer();
+        conn.pendingCandidates.forEach(candidate => pc.addIceCandidate(new RTCIceCandidate(candidate)));
+        conn.pendingCandidates = [];
+        return pc.createAnswer();
       })
-      .then(answer => {
-        updateProgress(fileId, 0, `Answer created for ${transfers.get(fileId)?.fileName}`, 'setup');
-        return peerConnection.setLocalDescription(answer);
-      })
+      .then(answer => pc.setLocalDescription(answer))
       .then(() => {
         ws.send(JSON.stringify({
           type: 'signal',
-          targetId: data.fromId,
-          signal: peerConnection.localDescription,
+          targetId: peerId,
+          signal: pc.localDescription,
         }));
-        updateProgress(fileId, 0, `Sending answer to peer for ${transfers.get(fileId)?.fileName}...`, 'setup');
       })
       .catch(error => {
         console.error('Error handling offer:', error);
-        updateProgress(fileId, 0, `Failed to handle offer for ${transfers.get(fileId)?.fileName}`, 'setup');
+        teardownIncoming(peerId, conn);
       });
+
   } else if (data.signal.type === 'answer') {
-    if (!peerConnection) return;
-    peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal))
+    const conn = outgoingConnections.get(peerId);
+    if (!conn) return;
+    conn.pc.setRemoteDescription(new RTCSessionDescription(data.signal))
       .then(() => {
-        updateProgress(fileId, 0, `Answer received for ${transfers.get(fileId)?.fileName}`, 'setup');
-        while (pendingCandidates.length > 0) {
-          peerConnection.addIceCandidate(new RTCIceCandidate(pendingCandidates.shift()));
-        }
+        conn.pendingCandidates.forEach(candidate => conn.pc.addIceCandidate(new RTCIceCandidate(candidate)));
+        conn.pendingCandidates = [];
       })
       .catch(error => console.error('Error handling answer:', error));
+
   } else if (data.signal.candidate) {
-    if (!peerConnection) return;
-    if (peerConnection.remoteDescription) {
-      peerConnection.addIceCandidate(new RTCIceCandidate(data.signal.candidate))
+    // A candidate could belong to either an outgoing or incoming negotiation with this
+    // peer; in the (common) case only one exists. If both exist at once -- this peer is
+    // simultaneously downloading from us AND we're downloading from them -- candidates
+    // may be misrouted between the two; that narrow case can cause one of the two
+    // transfers to fail ICE and retry, but no longer corrupts unrelated peers' transfers.
+    const conn = outgoingConnections.get(peerId) || incomingConnections.get(peerId);
+    if (!conn) return;
+    if (conn.pc.remoteDescription) {
+      conn.pc.addIceCandidate(new RTCIceCandidate(data.signal.candidate))
         .catch(error => console.error('Error adding ICE candidate:', error));
-      updateProgress(fileId, 0, `Received ICE candidate for ${transfers.get(fileId)?.fileName}`, 'setup');
     } else {
-      pendingCandidates.push(data.signal.candidate);
+      conn.pendingCandidates.push(data.signal.candidate);
     }
   }
 }
 
-function handleDataChannelMessage(e) {
+function handleDataChannelMessage(e, conn, peerId) {
   if (typeof e.data === 'string') {
     const message = JSON.parse(e.data);
     console.log('Received message:', message);
     if (message.type === 'request') {
       const file = sharedFilesMap.get(message.fileName)?.file;
-      if (file) sendFileWithProgress(file, message.fileId);
+      if (file) sendFileWithProgress(file, message.fileId, conn);
     } else if (message.type === 'fileSize') {
-      const fileId = message.fileId || Date.now().toString();
-      const existing = transfers.get(fileId);
-      if (existing) {
-        // Transfer entry already created by processDownloadQueue — just fill in the size
-        existing.totalSize = message.size || 0;
-        existing.fileName = message.fileName;
-      } else {
-        transfers.set(fileId, {
+      const fileId = message.fileId;
+      let existing = transfers.get(fileId);
+      if (!existing) {
+        existing = {
           fileName: message.fileName,
-          totalSize: message.size || 0,
+          totalSize: 0,
           receivedSize: 0,
-          chunks: [],
+          pendingChunks: [],
+          pendingBytes: 0,
+          blobParts: [],
           progressBarId: createProgressBar(fileId, message.fileName, 'receive'),
           direction: 'receive'
-        });
+        };
+        transfers.set(fileId, existing);
       }
+      existing.totalSize = message.size || 0;
+      existing.fileName = message.fileName;
       console.log(`Set totalSize for ${fileId} to ${message.size} bytes`);
       updateProgress(fileId, 0, `Receiving ${message.fileName} (0.00 KB of ${(message.size / 1024).toFixed(2)} KB)...`, 'receive');
     } else if (message.type === 'end') {
       console.log('Received end message, finalizing download');
-      receiveFileWithProgress(message.fileId);
+      receiveFileWithProgress(message.fileId); // may synchronously start the next queued download
+      conn.fileId = null;
+      closeConnectionObjects(conn);
+      if (outgoingConnections.get(peerId) === conn) {
+        outgoingConnections.delete(peerId);
+      }
     } else if (message.type === 'stop') {
       console.log(`Received stop message for fileId: ${message.fileId}`);
-      transfers.delete(message.fileId);
-      const progressBar = document.getElementById(`progress-${message.fileId}`);
-      if (progressBar) progressBar.remove();
+      cleanupTransfer(message.fileId);
       console.log(`Transfer of ${message.fileName || 'file'} stopped by sender`);
+      if (conn.fileId === message.fileId) {
+        conn.fileId = null;
+        isDownloading = false;
+        processDownloadQueue();
+      }
     }
   } else {
-    const fileId = Array.from(transfers.keys()).find(id => transfers.get(id).direction === 'receive') || Date.now().toString();
-    const transfer = transfers.get(fileId);
+    // Routed via this specific connection's current fileId -- not a global search over
+    // every in-flight transfer -- so a stale/orphaned entry from an earlier failed
+    // transfer can never intercept bytes meant for the current one.
+    const fileId = conn.fileId;
+    const transfer = fileId ? transfers.get(fileId) : undefined;
     if (transfer) {
+      let byteLength = 0;
       if (e.data instanceof ArrayBuffer && e.data.byteLength > 0) {
-        transfer.chunks.push(e.data);
-        transfer.receivedSize += e.data.byteLength;
-        console.log(`Received valid ArrayBuffer chunk for ${fileId}, byteLength: ${e.data.byteLength}, receivedSize: ${transfer.receivedSize}, totalSize: ${transfer.totalSize}`);
-        
-        const progress = transfer.totalSize > 0 ? (transfer.receivedSize / transfer.totalSize) * 100 : 0;
-        updateProgress(fileId, progress, `Receiving ${transfer.fileName} (${(transfer.receivedSize / 1024).toFixed(2)} KB of ${(transfer.totalSize / 1024).toFixed(2)} KB)...`, 'receive');
+        byteLength = e.data.byteLength;
       } else if (e.data instanceof Blob && e.data.size > 0) {
-        transfer.chunks.push(e.data);
-        transfer.receivedSize += e.data.size;
-        console.log(`Received valid Blob chunk for ${fileId}, size: ${e.data.size}, receivedSize: ${transfer.receivedSize}, totalSize: ${transfer.totalSize}`);
-        
-        const progress = transfer.totalSize > 0 ? (transfer.receivedSize / transfer.totalSize) * 100 : 0;
-        updateProgress(fileId, progress, `Receiving ${transfer.fileName} (${(transfer.receivedSize / 1024).toFixed(2)} KB of ${(transfer.totalSize / 1024).toFixed(2)} KB)...`, 'receive');
+        byteLength = e.data.size;
       } else {
-        console.warn(`Received invalid chunk for ${fileId}, type: ${e.data?.constructor?.name || 'unknown'}, byteLength: ${e.data?.byteLength || 'undefined'}, size: ${e.data?.size || 'undefined'}, isArrayBuffer: ${e.data instanceof ArrayBuffer}, raw:`, e.data);
+        console.warn(`Received invalid chunk for ${fileId}, type: ${e.data?.constructor?.name || 'unknown'}`);
+        return;
       }
+      transfer.pendingChunks.push(e.data);
+      transfer.pendingBytes += byteLength;
+      transfer.receivedSize += byteLength;
+
+      // Periodically coalesce raw chunks into a Blob so peak memory stays bounded
+      // instead of holding the whole file as an ever-growing array of ArrayBuffers --
+      // the thing that OOMs a tab on a memory-constrained device for large files.
+      const COALESCE_THRESHOLD = 4 * 1024 * 1024; // 4 MB
+      if (transfer.pendingBytes >= COALESCE_THRESHOLD) {
+        transfer.blobParts.push(new Blob(transfer.pendingChunks));
+        transfer.pendingChunks = [];
+        transfer.pendingBytes = 0;
+      }
+
+      console.log(`Received chunk for ${fileId}, byteLength: ${byteLength}, receivedSize: ${transfer.receivedSize}, totalSize: ${transfer.totalSize}`);
+      const progress = transfer.totalSize > 0 ? (transfer.receivedSize / transfer.totalSize) * 100 : 0;
+      updateProgress(fileId, progress, `Receiving ${transfer.fileName} (${(transfer.receivedSize / 1024).toFixed(2)} KB of ${(transfer.totalSize / 1024).toFixed(2)} KB)...`, 'receive');
     } else {
-      console.warn(`No transfer found for chunk, fileId: ${fileId}`);
+      console.warn(`No active transfer for chunk from peer ${peerId} (fileId: ${fileId})`);
     }
   }
 }
 
-async function sendFileWithProgress(file, fileId = Date.now().toString()) {
-  if (!isSharing || dataChannel?.readyState !== 'open') {
+async function sendFileWithProgress(file, fileId, conn) {
+  if (!isSharing || conn.dc?.readyState !== 'open') {
     console.warn('Cannot send file: not sharing or data channel closed');
     return;
   }
@@ -634,6 +687,7 @@ async function sendFileWithProgress(file, fileId = Date.now().toString()) {
   let offset = 0;
   let paused = false;
 
+  conn.sendFileIds.add(fileId);
   transfers.set(fileId, {
     fileName: file.name,
     totalSize,
@@ -642,16 +696,20 @@ async function sendFileWithProgress(file, fileId = Date.now().toString()) {
     direction: 'send'
   });
 
-  dataChannel.send(JSON.stringify({ type: 'fileSize', size: totalSize, fileName: file.name, fileId }));
+  conn.dc.send(JSON.stringify({ type: 'fileSize', size: totalSize, fileName: file.name, fileId }));
   console.log(`Sent fileSize for ${fileId}: ${totalSize} bytes`);
-  dataChannel.bufferedAmountLowThreshold = LOW_WATERMARK;
+  conn.dc.bufferedAmountLowThreshold = LOW_WATERMARK;
   updateProgress(fileId, 0, `Sending ${file.name} (0.00 KB of ${(totalSize / 1024).toFixed(2)} KB)...`, 'send');
 
   async function pump() {
     while (offset < totalSize) {
-      if (!isSharing || dataChannel.readyState !== 'open') return;
+      if (!isSharing || conn.dc.readyState !== 'open') {
+        conn.sendFileIds.delete(fileId);
+        cleanupTransfer(fileId);
+        return;
+      }
 
-      if (dataChannel.bufferedAmount >= HIGH_WATERMARK) {
+      if (conn.dc.bufferedAmount >= HIGH_WATERMARK) {
         paused = true;
         return; // onbufferedamountlow will restart pump()
       }
@@ -660,9 +718,11 @@ async function sendFileWithProgress(file, fileId = Date.now().toString()) {
       let chunk;
       try {
         chunk = await file.slice(offset, end).arrayBuffer();
-        dataChannel.send(chunk);
+        conn.dc.send(chunk);
       } catch (err) {
         console.error(`Send error for ${fileId}:`, err);
+        conn.sendFileIds.delete(fileId);
+        cleanupTransfer(fileId);
         return;
       }
 
@@ -675,12 +735,13 @@ async function sendFileWithProgress(file, fileId = Date.now().toString()) {
       }
     }
 
-    dataChannel.onbufferedamountlow = null;
-    dataChannel.send(JSON.stringify({ type: 'end', fileId }));
+    conn.dc.onbufferedamountlow = null;
+    conn.dc.send(JSON.stringify({ type: 'end', fileId }));
     updateProgress(fileId, 100, `Sent ${file.name}`, 'send');
+    conn.sendFileIds.delete(fileId);
   }
 
-  dataChannel.onbufferedamountlow = () => {
+  conn.dc.onbufferedamountlow = () => {
     if (paused) {
       paused = false;
       pump();
@@ -692,7 +753,7 @@ async function sendFileWithProgress(file, fileId = Date.now().toString()) {
 
 function receiveFileWithProgress(fileId) {
   const transfer = transfers.get(fileId);
-  if (!transfer || transfer.chunks.length === 0) {
+  if (!transfer || transfer.receivedSize === 0) {
     console.warn(`No valid chunks for ${fileId}, skipping download`);
     transfers.delete(fileId);
     isDownloading = false;
@@ -700,12 +761,19 @@ function receiveFileWithProgress(fileId) {
     return;
   }
 
+  if (transfer.pendingChunks.length > 0) {
+    transfer.blobParts.push(new Blob(transfer.pendingChunks));
+    transfer.pendingChunks = [];
+    transfer.pendingBytes = 0;
+  }
+
   const receivedSize = transfer.receivedSize;
   const progress = transfer.totalSize > 0 ? (receivedSize / transfer.totalSize) * 100 : 100;
   console.log(`Finalizing download for ${fileId}: receivedSize: ${receivedSize}, totalSize: ${transfer.totalSize}, progress: ${progress}%`);
   updateProgress(fileId, progress, `Finalizing ${transfer.fileName}...`, 'receive');
-  
-  const blob = new Blob(transfer.chunks);
+
+  const blob = new Blob(transfer.blobParts);
+  transfer.blobParts = []; // release references so they can be GC'd once the download starts
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
