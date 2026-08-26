@@ -103,10 +103,16 @@ const wss = new WebSocketServer({ server });
 
 const clients = new Map();
 const EXPIRATION_TIME = 72 * 60 * 60 * 1000;
+const HEARTBEAT_INTERVAL = 30 * 1000;
 
 wss.on('connection', (ws) => {
   const clientId = Math.random().toString(36).substring(2, 15);
   console.log('New connection, assigned ID:', clientId);
+
+  ws.isAlive = true;
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
 
   ws.on('message', (message) => {
     const data = JSON.parse(message);
@@ -204,6 +210,19 @@ wss.on('connection', (ws) => {
   });
 });
 
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      const clientInfo = clients.get(ws);
+      console.log('Terminating unresponsive client:', clientInfo?.id);
+      clients.delete(ws);
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, HEARTBEAT_INTERVAL);
+
 function broadcastUpdate() {
   const now = Date.now();
   const devices = [...clients.values()];
@@ -241,6 +260,7 @@ function broadcastUpdate() {
       }));
     } catch (error) {
       console.error('Failed to send update to client:', clients.get(clientWs)?.id, error);
+      clients.delete(clientWs);
     }
   });
 }
