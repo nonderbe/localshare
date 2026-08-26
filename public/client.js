@@ -505,18 +505,6 @@ function stopSharingText(id) {
   updateTextLists(lastSharedTexts.filter(t => t.id !== id));
 }
 
-function shareFiles() {
-  console.log('shareFiles() called');
-  const fileInput = document.getElementById('fileInput');
-  const folderInput = document.getElementById('folderInput');
-  const selectedFiles = Array.from(fileInput.files).concat(Array.from(folderInput.files || []));
-  selectedFiles.forEach(file => {
-    sharedFilesMap.set(file.name, { file, ownerId: myId });
-  });
-  updateFileLists(files);
-  shareFilesToNetwork();
-}
-
 function stopSharing() {
   isSharing = false;
   sharedFilesMap.clear();

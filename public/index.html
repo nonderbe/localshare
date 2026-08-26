@@ -69,7 +69,7 @@
       <h2>What is LocalShare?</h2>
       <p>LocalShare is a free, peer-to-peer file sharing tool for devices on the same local network. There's nothing to install and no cloud in between — files travel directly from one device to another over a secure WebSocket/WebRTC connection, so transfers are fast and your data never leaves your network.</p>
       <h2>How it works</h2>
-      <p>Open this page on two or more devices connected to the same Wi-Fi or Ethernet network. Each device that loads the page shows up automatically. Select the files or folder you want to share, click "Share Files," and they instantly become available for the other connected devices to download — no accounts, no uploads, no waiting.</p>
+      <p>Open this page on two or more devices connected to the same Wi-Fi or Ethernet network. Each device that loads the page shows up automatically. Click "Share Files" or "Share Folder" and pick what you want to share, and it instantly becomes available for the other connected devices to download — no accounts, no uploads, no waiting.</p>
       <h2>Why use LocalShare</h2>
       <p>Because your files are sent directly between devices instead of round-tripping through a remote server, transfers are typically much faster than cloud services, especially for large files. LocalShare works in any modern browser on Windows, macOS, iOS, Android, and Linux, and keeps your data private since nothing is stored on external servers.</p>
     </div>
@@ -78,9 +78,8 @@
   <div id="tab-files" class="tab-panel active">
     <div class="container">
       <div class="button-group">
-        <button onclick="document.getElementById('fileInput').click()">Select Files</button>
-        <button onclick="document.getElementById('folderInput').click()">Select Folder</button>
-        <button onclick="shareFiles()">Share Files</button>
+        <button onclick="document.getElementById('fileInput').click()">Share Files</button>
+        <button onclick="document.getElementById('folderInput').click()">Share Folder</button>
         <button onclick="stopSharing()">Stop Sharing</button>
       </div>
       <input type="file" id="fileInput" multiple style="display: none;">
