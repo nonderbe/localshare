@@ -5,6 +5,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const nodemailer = require('nodemailer');
+const stats = require('./stats');
 
 const app = express();
 const port = process.env.PORT || 10000;
@@ -83,7 +84,7 @@ app.post('/deploy-webhook', express.raw({ type: 'application/json', limit: '1mb'
   res.status(202).end('deploying');
 
   const log = fs.openSync('/var/log/localshare-deploy.log', 'a');
-  const child = spawn('/bin/sh', ['-c', 'git pull origin main && pm2 restart local-share.com'], {
+  const child = spawn('/bin/sh', ['-c', 'git pull origin main && npm install --omit=dev && pm2 restart local-share.com'], {
     cwd: __dirname,
     detached: true,
     stdio: ['ignore', log, log],
@@ -105,7 +106,7 @@ const clients = new Map();
 const EXPIRATION_TIME = 72 * 60 * 60 * 1000;
 const HEARTBEAT_INTERVAL = 30 * 1000;
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   const clientId = Math.random().toString(36).substring(2, 15);
   console.log('New connection, assigned ID:', clientId);
 
@@ -120,6 +121,9 @@ wss.on('connection', (ws) => {
     if (data.type === 'register') {
       console.log('Client registered - ID:', clientId);
       clients.set(ws, { id: clientId, sharedFiles: [], sharedTexts: [] });
+      if (ws.statsConnRowId == null) {
+        ws.statsConnRowId = stats.recordConnection(req);
+      }
       ws.send(JSON.stringify({ type: 'register', clientId }));
       broadcastUpdate();
     } else if (data.type === 'share') {
@@ -142,6 +146,7 @@ wss.on('connection', (ws) => {
         } else {
           // Add new file
           updatedFiles.push(newFile);
+          stats.recordFileShare(ws.statsConnRowId, newFile.size, newFile.timestamp);
         }
       });
       // Include existing files that weren't in the new data (to preserve them)
@@ -171,6 +176,7 @@ wss.on('connection', (ws) => {
         length: data.length,
         timestamp: data.timestamp,
       });
+      stats.recordTextShare(ws.statsConnRowId, data.length, data.timestamp);
       console.log('Client shared text:', clientInfo.id, 'id:', data.id);
       broadcastUpdate();
     } else if (data.type === 'stopSharingText') {
@@ -200,6 +206,7 @@ wss.on('connection', (ws) => {
     const clientInfo = clients.get(ws);
     if (clientInfo) {
       console.log('Client disconnected:', clientInfo.id);
+      stats.markDisconnected(ws.statsConnRowId);
       clients.delete(ws);
       broadcastUpdate();
     }
@@ -215,6 +222,7 @@ setInterval(() => {
     if (ws.isAlive === false) {
       const clientInfo = clients.get(ws);
       console.log('Terminating unresponsive client:', clientInfo?.id);
+      stats.markDisconnected(ws.statsConnRowId);
       clients.delete(ws);
       return ws.terminate();
     }

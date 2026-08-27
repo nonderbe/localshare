@@ -1,12 +1,17 @@
 {
   "name": "localshare",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "updatedb": "node scripts/update-geo-db.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "ws": "^8.13.0",
-    "nodemailer": "^6.9.13"
+    "ip-location-api": "^5.0.2",
+    "nodemailer": "^6.9.13",
+    "ws": "^8.13.0"
   }
 }
