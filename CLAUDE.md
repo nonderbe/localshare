@@ -49,7 +49,7 @@ LocalShare is a browser-based peer-to-peer file sharing app. Files never touch t
 
 **`public/`** — Static HTML/CSS pages (`index.html`, `about.html`, `faq.html`, `suggestions.html`, `styles.css`), plus `favicon.svg`/`favicon-*.png`/`apple-touch-icon.png`, `og-image.jpg`, and `manifest.json` for search/social/PWA metadata.
 
-**`.wellknown/appspecific/com.tesla.3p.public-key.pem`** — Tesla third-party app public key served at `/.well-known/appspecific/com.tesla.3p.public-key.pem`. Note: the directory is named `.wellknown` (no hyphen) but Express serves it under `/.well-known` — verify routing if this path changes. This path is also excluded in spirit from the host-canonicalization redirect (see below): if any third-party verifier ever fetches it from the apex domain without following redirects, that fetch will fail — check this if Tesla verification breaks.
+**Tesla third-party app public key** (`/.well-known/appspecific/com.tesla.3p.public-key.pem`) is no longer served by this app. It's now served directly on the home server by a standalone script, `tesla-pem.py`, listening on port 10001 — separate from this Express app's port 10000. This repo's `.wellknown/appspecific/com.tesla.3p.public-key.pem` and `public/.wellknown/appspecific/com.tesla.3p.public-key.pem` files are stale leftovers from the old in-app-serving approach and are no longer what's actually live.
 
 ## Environment Variables
 
