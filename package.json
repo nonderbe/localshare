@@ -6,7 +6,8 @@
   },
   "scripts": {
     "start": "node server.js",
-    "updatedb": "node scripts/update-geo-db.js"
+    "updatedb": "node scripts/update-geo-db.js",
+    "stats": "node scripts/connection-stats.js"
   },
   "dependencies": {
     "express": "^4.22.1",
