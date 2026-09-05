@@ -18,10 +18,13 @@
 
   <div class="container about-container">
     <h2>Your files</h2>
-    <p>LocalShare is a peer-to-peer file sharing tool. Files you share travel directly between devices on your local network over a secure WebSocket/WebRTC connection — they are never uploaded to or stored on our servers.</p>
+    <p>LocalShare is a peer-to-peer file sharing tool. The files you share are never uploaded to or stored on our servers — they transfer directly between your devices once a connection is set up. Our server's only role is briefly relaying the connection handshake (WebSocket signaling) between two devices, and it only introduces devices to each other when they're on the same local network. Shared file listings automatically expire after 72 hours.</p>
+
+    <h2>Usage statistics</h2>
+    <p>We log basic, anonymized usage data to understand how LocalShare is used: a salted, one-way hash of your IP address (the raw IP is never stored) and your country, derived from an offline lookup, per connection; and the size of files or length of text shared, per share event. We never log file names, text content, or whether a shared file was ever actually downloaded — the server has no visibility into that, since downloads happen directly between devices.</p>
 
     <h2>Advertising</h2>
-    <p>LocalShare uses Google AdSense to display ads and help support the site. Google and its partners may use cookies and similar technologies to serve ads based on your visits to this and other sites. You can learn more about how Google uses this data at <a href="https://policies.google.com/technologies/partner-sites">policies.google.com/technologies/partner-sites</a>, and manage your ad personalization settings at <a href="https://adssettings.google.com">adssettings.google.com</a>.</p>
+    <p>LocalShare uses Google AdSense to display ads on some pages and help support the site. Google and its partners may use cookies and similar technologies to serve ads based on your visits to this and other sites. You can learn more about how Google uses this data at <a href="https://policies.google.com/technologies/partner-sites">policies.google.com/technologies/partner-sites</a>, and manage your ad personalization settings at <a href="https://adssettings.google.com">adssettings.google.com</a>.</p>
     <p>If you are visiting from the EEA or UK, you may see a consent message asking for permission to use cookies for personalized advertising.</p>
 
     <h2>Suggestions</h2>

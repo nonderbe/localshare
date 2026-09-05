@@ -106,8 +106,26 @@ const clients = new Map();
 const EXPIRATION_TIME = 72 * 60 * 60 * 1000;
 const HEARTBEAT_INTERVAL = 30 * 1000;
 
+// Two clients are only shown to each other (and allowed to signal each
+// other) when they're on the same local network. IPv4 behind a home
+// router shares one public address, so we match exactly; IPv6 assigns a
+// distinct address per device out of a /64 prefix the ISP hands the
+// household, so we match on that prefix instead. Anything unparseable or
+// of mismatched families is treated as a different network (fail closed).
+function sameNetwork(ipA, ipB) {
+  if (!ipA || !ipB) return false;
+  if (ipA === ipB) return true;
+  const isV6 = (ip) => ip.includes(':');
+  if (isV6(ipA) !== isV6(ipB)) return false;
+  if (isV6(ipA)) {
+    return ipA.split(':').slice(0, 4).join(':') === ipB.split(':').slice(0, 4).join(':');
+  }
+  return false;
+}
+
 wss.on('connection', (ws, req) => {
   const clientId = Math.random().toString(36).substring(2, 15);
+  const clientIp = stats.extractIp(req);
   console.log('New connection, assigned ID:', clientId);
 
   ws.isAlive = true;
@@ -120,7 +138,7 @@ wss.on('connection', (ws, req) => {
     console.log('Received message from', clientId, ':', data);
     if (data.type === 'register') {
       console.log('Client registered - ID:', clientId);
-      clients.set(ws, { id: clientId, sharedFiles: [], sharedTexts: [] });
+      clients.set(ws, { id: clientId, ip: clientIp, sharedFiles: [], sharedTexts: [] });
       if (ws.statsConnRowId == null) {
         ws.statsConnRowId = stats.recordConnection(req);
       }
@@ -188,7 +206,7 @@ wss.on('connection', (ws, req) => {
       const targetClient = [...clients.entries()].find(
         ([_, info]) => info.id === data.targetId
       );
-      if (targetClient) {
+      if (targetClient && sameNetwork(clientIp, targetClient[1].ip)) {
         console.log('Sending signal from', clientId, 'to', data.targetId);
         targetClient[0].send(JSON.stringify({
           type: 'signal',
@@ -197,7 +215,7 @@ wss.on('connection', (ws, req) => {
           signal: data.signal,
         }));
       } else {
-        console.log('Target client not found:', data.targetId);
+        console.log('Target client not found or not on the same network:', data.targetId);
       }
     }
   });
@@ -244,21 +262,23 @@ function broadcastUpdate() {
       return age < EXPIRATION_TIME;
     });
   });
-  const deviceCount = devices.length;
-  const sharedFiles = devices.flatMap(client => client.sharedFiles.map(file => ({
-    name: file.name,
-    size: file.size,
-    ownerId: client.id,
-  })));
-  const sharedTexts = devices.flatMap(client => client.sharedTexts.map(text => ({
-    id: text.id,
-    label: text.label,
-    length: text.length,
-    ownerId: client.id,
-  })));
-  console.log('Broadcasting to all - Devices:', deviceCount, 'Files:', sharedFiles, 'Texts:', sharedTexts);
   console.log('Connected clients:', [...clients.keys()].map(ws => clients.get(ws).id));
-  clients.forEach((_, clientWs) => {
+  // Each client only sees devices/files/text from its own local network,
+  // so the payload is computed per recipient rather than broadcast as-is.
+  clients.forEach((recipient, clientWs) => {
+    const peers = devices.filter(client => sameNetwork(client.ip, recipient.ip));
+    const deviceCount = peers.length;
+    const sharedFiles = peers.flatMap(client => client.sharedFiles.map(file => ({
+      name: file.name,
+      size: file.size,
+      ownerId: client.id,
+    })));
+    const sharedTexts = peers.flatMap(client => client.sharedTexts.map(text => ({
+      id: text.id,
+      label: text.label,
+      length: text.length,
+      ownerId: client.id,
+    })));
     try {
       clientWs.send(JSON.stringify({
         type: 'update',
@@ -267,7 +287,7 @@ function broadcastUpdate() {
         sharedTexts,
       }));
     } catch (error) {
-      console.error('Failed to send update to client:', clients.get(clientWs)?.id, error);
+      console.error('Failed to send update to client:', recipient.id, error);
       clients.delete(clientWs);
     }
   });

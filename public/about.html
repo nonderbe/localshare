@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LocalShare - About</title>
-  <meta name="description" content="Learn more about LocalShare, a fast and secure local file sharing service.">
-  <meta name="keywords" content="file sharing, local network, LocalShare, secure file transfer">
+  <meta name="description" content="Why LocalShare exists: getting photos off an Android phone onto a Mac without cloud uploads, accounts, or cables.">
+  <meta name="keywords" content="file sharing, local network, LocalShare, secure file transfer, android to mac file transfer">
   <link rel="canonical" href="https://www.local-share.com/about.html">
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -17,11 +17,11 @@
   <meta property="og:url" content="https://www.local-share.com/about.html">
   <meta property="og:site_name" content="LocalShare">
   <meta property="og:title" content="About LocalShare">
-  <meta property="og:description" content="Learn more about LocalShare, a fast and secure local file sharing service.">
+  <meta property="og:description" content="Why LocalShare exists: getting photos off an Android phone onto a Mac without cloud uploads, accounts, or cables.">
   <meta property="og:image" content="https://www.local-share.com/og-image.jpg">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="About LocalShare">
-  <meta name="twitter:description" content="Learn more about LocalShare, a fast and secure local file sharing service.">
+  <meta name="twitter:description" content="Why LocalShare exists: getting photos off an Android phone onto a Mac without cloud uploads, accounts, or cables.">
   <meta name="twitter:image" content="https://www.local-share.com/og-image.jpg">
 
   <link rel="stylesheet" href="/styles.css">
@@ -31,13 +31,19 @@
 <body>
   <header class="hero">
     <h1>About LocalShare</h1>
-    <p>Your Local File Sharing Solution</p>
+    <p>Why this exists</p>
   </header>
 
   <div class="container about-container">
-    <h2>How It Works</h2>
-    <p>LocalShare is designed to make file sharing between devices on the same network simple, fast, and secure. Unlike cloud-based services, LocalShare keeps your files local — no uploads to external servers, no delays. Using WebSocket technology, it connects your devices directly, allowing you to drag, drop, and share files instantly.</p>
-    <p>Whether you're at home, in the office, or on a shared Wi-Fi, LocalShare ensures your data stays where it belongs: with you.</p>
+    <h2>Why I built this</h2>
+    <p>I built LocalShare because I kept hitting the same wall trying to get photos off an Android phone and onto a Mac. AirDrop doesn't exist outside Apple's ecosystem, so that was never an option. The usual fallbacks — uploading to Google Photos or Drive and downloading again on the other end, emailing files to yourself, or plugging in a cable and fighting with Android File Transfer — all involve either a cloud round-trip you don't need, an account, or software to install. All I actually needed was to move files from one device on my Wi-Fi to another, directly.</p>
+
+    <h2>How it solves that</h2>
+    <p>Open this page in a browser on both devices — Chrome on the phone, Safari or Chrome on the Mac — while they're on the same Wi-Fi. Each device shows up in the other's list automatically. Pick the files and they transfer over a direct peer-to-peer connection; the server only relays a brief handshake between the two devices to get that connection started, and only ever shows devices to each other when they're on the same local network. Nothing is uploaded anywhere in between, there's no account to create, and there's nothing to install.</p>
+
+    <h2>Where else it's useful</h2>
+    <p>The same problem shows up in a few other places: pulling a large video off a phone before a group chat compresses it into mush, handing a file to a coworker's laptop over office Wi-Fi without a shared drive, or getting an install file onto a machine you'd rather not sign into a cloud account on.</p>
+
     <a href="/index.html" class="btn-back">Back to Home</a>
   </div>
 

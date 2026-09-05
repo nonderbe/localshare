@@ -37,7 +37,7 @@
     <h2>Frequently Asked Questions</h2>
     <div class="faq-item">
       <h3>Are my files sent over the internet?</h3>
-      <p>No, your files are not sent over the internet. LocalShare operates entirely within your local network. It uses direct peer-to-peer connections via WebSocket technology, meaning your data never leaves your network or reaches external servers.</p>
+      <p>Your files themselves are never sent to or stored on our server — only the connection setup passes through it. The server briefly relays a handshake between two devices so they can find each other, and only shows devices to each other when they're on the same local network. Once that handshake completes, files transfer directly, peer-to-peer.</p>
     </div>
     <div class="faq-item">
       <h3>Is my data safe when using this service?</h3>
@@ -50,6 +50,22 @@
     <div class="faq-item">
       <h3>Does LocalShare work on iOS, Windows, macOS, or Android?</h3>
       <p>Yes, LocalShare works across all major platforms — iOS, Windows, macOS, and Android — as long as you’re using a modern web browser like Chrome, Firefox, Safari, or Edge. Since it’s a web-based application, there’s no need to install additional software. Simply access the site from your device’s browser while connected to the same local network, and you’re ready to share files.</p>
+    </div>
+    <div class="faq-item">
+      <h3>Why don't my devices see each other?</h3>
+      <p>Both devices need to be on the same local network — the same Wi-Fi, or wired into the same router. LocalShare deliberately only shows you devices on your own network, so a phone on mobile data or a laptop on a different Wi-Fi network won't appear, and neither will devices outside your home or office. If two devices are on the same router but still don't see each other, check they're not on a guest network — many routers isolate guest Wi-Fi from the main network on purpose.</p>
+    </div>
+    <div class="faq-item">
+      <h3>How long do shared files stay available?</h3>
+      <p>72 hours. After that, a shared file automatically stops being offered to other devices — it never sat on our server to begin with, so nothing needs to be deleted, the listing just expires.</p>
+    </div>
+    <div class="faq-item">
+      <h3>Is there a file size limit?</h3>
+      <p>No hard limit is enforced. Files transfer directly between browsers in small chunks, so in practice the limits are your device's memory and how patient you are — very large files (many GB) will take a while and depend on both browsers staying on the page for the duration.</p>
+    </div>
+    <div class="faq-item">
+      <h3>What happens if a transfer fails partway through?</h3>
+      <p>Reload the page on the receiving device and start the download again — LocalShare doesn't currently resume a partial transfer, it restarts it.</p>
     </div>
     <a href="/index.html" class="btn-back">Back to Home</a>
   </div>
