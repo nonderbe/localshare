@@ -30,6 +30,7 @@
 
   <link rel="stylesheet" href="/styles.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5259703064510826" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/vanilla-tilt/1.7.0/vanilla-tilt.min.js"></script>
   <script type="application/ld+json">
   {
@@ -57,13 +58,13 @@
   <div class="container">
     <p id="deviceCount">0 devices connected</p>
     <div class="tab-switcher">
-      <button type="button" class="tab-button" data-tab="info" onclick="switchTab('info')">Info</button>
-      <button type="button" class="tab-button active" data-tab="files" onclick="switchTab('files')">Files</button>
+      <button type="button" class="tab-button active" data-tab="info" onclick="switchTab('info')">Info</button>
+      <button type="button" class="tab-button pulse" data-tab="files" onclick="switchTab('files')">Files</button>
       <button type="button" class="tab-button" data-tab="text" onclick="switchTab('text')">Text</button>
     </div>
   </div>
 
-  <div id="tab-info" class="tab-panel">
+  <div id="tab-info" class="tab-panel active">
     <div class="container about-container">
       <h2>What is LocalShare?</h2>
       <p>LocalShare is a free, peer-to-peer file sharing tool for devices on the same local network. There's nothing to install and no cloud in between — files travel directly from one device to another over a secure WebSocket/WebRTC connection, so transfers are fast and your data never leaves your network.</p>
@@ -71,10 +72,11 @@
       <p>Open this page on two or more devices connected to the same Wi-Fi or Ethernet network. Each device that loads the page shows up automatically. Click "Share Files" or "Share Folder" and pick what you want to share, and it instantly becomes available for the other connected devices to download — no accounts, no uploads, no waiting.</p>
       <h2>Why use LocalShare</h2>
       <p>Because your files are sent directly between devices instead of round-tripping through a remote server, transfers are typically much faster than cloud services, especially for large files. LocalShare works in any modern browser on Windows, macOS, iOS, Android, and Linux, and keeps your data private since nothing is stored on external servers.</p>
+      <p class="info-cta">Ready to try it? Switch to the <strong>Files</strong> tab above to start sharing.</p>
     </div>
   </div>
 
-  <div id="tab-files" class="tab-panel active">
+  <div id="tab-files" class="tab-panel">
     <div class="container">
       <div class="button-group">
         <button onclick="document.getElementById('fileInput').click()">Share Files</button>

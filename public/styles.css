@@ -113,6 +113,18 @@ button:hover {
 }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
+.tab-button.pulse {
+  border-color: #6C63FF;
+  animation: pulse-glow 1.8s ease-in-out infinite;
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(108, 99, 255, 0.55); }
+  50% { box-shadow: 0 0 0 8px rgba(108, 99, 255, 0); }
+}
+.info-cta {
+  margin-top: 24px;
+  font-weight: 700;
+}
 
 /* Text sharing */
 .text-share-controls {
