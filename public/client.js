@@ -277,7 +277,7 @@ async function registerDevice() {
 
   ws.onopen = () => {
     console.log('WebSocket connected successfully');
-    ws.send(JSON.stringify({ type: 'register' }));
+    ws.send(JSON.stringify({ type: 'register', linkToken }));
     updateDeviceCount(1);
     checkFolderSupport();
     // Re-share all files in sharedFilesMap on reconnect
@@ -324,6 +324,9 @@ function handleMessage(event) {
     updateDeviceCount(data.deviceCount);
     updateFileLists(data.sharedFiles);
     updateTextLists(data.sharedTexts || []);
+    updateNetwork(data.network, data.links || [], data.linkRequests || []);
+  } else if (data.type === 'linkStatus') {
+    handleLinkStatus(data);
   } else if (data.type === 'signal') {
     if (data.kind === 'text') {
       handleTextSignal(data);
@@ -337,6 +340,221 @@ function updateDeviceCount(count) {
   document.getElementById('deviceCount').textContent =
     `${count} device${count === 1 ? '' : 's'} connected`;
 }
+
+// Network linking: the chip shows which network (IPv4 address or IPv6 /64)
+// this device is grouped by. A device on IPv4 can ask to join an IPv6
+// network, which a device on that network has to approve. See network.js.
+let linkDeadlines = []; // [{ id, display, deadline }] for the countdown
+let pendingLink = null; // { display, deadline } while a request awaits approval
+let shownRequestIds = '';
+
+// Random per-tab secret identifying this device in a link. It survives a
+// reload (sessionStorage) but is never shown to anyone else.
+const linkToken = (() => {
+  const create = () => (crypto.randomUUID
+    ? crypto.randomUUID()
+    : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join(''));
+  try {
+    let token = sessionStorage.getItem('localshare-link-token');
+    if (!token) {
+      token = create();
+      sessionStorage.setItem('localshare-link-token', token);
+    }
+    return token;
+  } catch (err) {
+    return create();
+  }
+})();
+
+// Sends a message if the connection is up; returns whether it was sent.
+function sendToServer(message) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  ws.send(JSON.stringify(message));
+  return true;
+}
+
+function updateNetwork(network, links, linkRequests) {
+  const chip = document.getElementById('networkChip');
+  if (!network) {
+    chip.hidden = true;
+    closeNetworkPanel();
+  } else {
+    chip.hidden = false;
+    document.getElementById('networkChipFamily').textContent = network.family;
+    document.getElementById('networkChipAddress').textContent = network.short;
+    document.getElementById('networkAddress').textContent = network.display;
+    const isV4 = network.family === 'IPv4';
+    document.getElementById('networkHintFromV6').hidden = isV4;
+    document.getElementById('networkHintFromV4').hidden = !isV4;
+    document.getElementById('networkLinkSection').hidden = !isV4;
+  }
+
+  const now = Date.now();
+  linkDeadlines = links.map(link => ({ id: link.id, display: link.display, deadline: now + link.expiresIn }));
+  if (pendingLink && links.some(link => link.display === pendingLink.display)) {
+    pendingLink = null;
+    setLinkStatus('');
+  }
+  renderNetworkLinks();
+  renderLinkRequests(linkRequests);
+}
+
+// Also runs on a timer, to tick the countdown down and to clear the
+// "request sent" note once the request has expired unanswered.
+function renderNetworkLinks() {
+  const now = Date.now();
+  if (pendingLink && pendingLink.deadline <= now) {
+    pendingLink = null;
+    setLinkStatus('No answer in time. Check the address and try again.', true);
+  }
+
+  const container = document.getElementById('networkLinks');
+  container.replaceChildren();
+  linkDeadlines.filter(link => link.deadline > now).forEach(link => {
+    const item = document.createElement('div');
+    item.className = 'network-link-item';
+
+    const badge = document.createElement('span');
+    badge.className = 'network-link-badge';
+    const dot = document.createElement('span');
+    dot.className = 'network-dot';
+    const address = document.createElement('span');
+    address.className = 'network-mono';
+    address.textContent = link.display;
+    badge.append(dot, 'Linked with ', address);
+
+    const time = document.createElement('span');
+    time.className = 'network-link-time';
+    const minutes = Math.ceil((link.deadline - now) / 60000);
+    time.textContent = `${minutes} min left`;
+
+    const unlink = document.createElement('button');
+    unlink.type = 'button';
+    unlink.className = 'network-text-btn';
+    unlink.textContent = 'Unlink';
+    unlink.onclick = () => sendToServer({ type: 'unlink', linkId: link.id });
+
+    item.append(badge, time, unlink);
+    container.appendChild(item);
+  });
+}
+
+function renderLinkRequests(linkRequests) {
+  // Only rebuild when the set of requests changes, so screen readers don't
+  // re-announce the banner on every unrelated update.
+  const ids = linkRequests.map(request => request.id).join(',');
+  if (ids === shownRequestIds) return;
+  shownRequestIds = ids;
+
+  const container = document.getElementById('linkRequests');
+  container.replaceChildren();
+  linkRequests.forEach(request => {
+    const banner = document.createElement('div');
+    banner.className = 'link-request';
+    banner.setAttribute('role', 'alert');
+
+    const message = document.createElement('span');
+    const address = document.createElement('span');
+    address.className = 'network-mono';
+    address.textContent = request.from;
+    message.append('A device at ', address, ' wants to join your network for 1 hour.');
+
+    const actions = document.createElement('span');
+    actions.className = 'link-request-actions';
+    const respond = (allow) => {
+      if (sendToServer({ type: 'linkRespond', requestId: request.id, allow })) banner.remove();
+    };
+    const allow = document.createElement('button');
+    allow.type = 'button';
+    allow.className = 'network-btn network-btn-primary';
+    allow.textContent = 'Allow';
+    allow.onclick = () => respond(true);
+    const ignore = document.createElement('button');
+    ignore.type = 'button';
+    ignore.className = 'network-btn network-btn-ghost';
+    ignore.textContent = 'Ignore';
+    ignore.onclick = () => respond(false);
+    actions.append(allow, ignore);
+
+    banner.append(message, actions);
+    container.appendChild(banner);
+  });
+}
+
+function handleLinkStatus(data) {
+  if (data.status === 'sent') {
+    pendingLink = { display: data.message, deadline: Date.now() + data.expiresIn };
+    document.getElementById('networkLinkInput').value = '';
+    setLinkStatus(`Request sent to ${data.message}. Tap Allow on the other device within 2 minutes.`);
+  } else {
+    pendingLink = null;
+    setLinkStatus(data.message, true);
+  }
+}
+
+function setLinkStatus(text, isError = false) {
+  const status = document.getElementById('networkLinkStatus');
+  status.textContent = text;
+  status.hidden = !text;
+  status.classList.toggle('error', isError);
+}
+
+function openNetworkPanel() {
+  document.getElementById('networkPanel').hidden = false;
+  document.getElementById('networkChip').setAttribute('aria-expanded', 'true');
+}
+
+function closeNetworkPanel() {
+  document.getElementById('networkPanel').hidden = true;
+  document.getElementById('networkChip').setAttribute('aria-expanded', 'false');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const chip = document.getElementById('networkChip');
+  const panel = document.getElementById('networkPanel');
+
+  chip.addEventListener('click', () => {
+    if (panel.hidden) openNetworkPanel(); else closeNetworkPanel();
+  });
+  document.addEventListener('click', (e) => {
+    if (!panel.hidden && !panel.contains(e.target) && !chip.contains(e.target)) closeNetworkPanel();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !panel.hidden) {
+      closeNetworkPanel();
+      chip.focus();
+    }
+  });
+
+  const whyToggle = document.getElementById('networkWhyToggle');
+  whyToggle.addEventListener('click', () => {
+    const why = document.getElementById('networkWhy');
+    why.hidden = !why.hidden;
+    whyToggle.setAttribute('aria-expanded', String(!why.hidden));
+  });
+
+  const copyButton = document.getElementById('networkCopy');
+  copyButton.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById('networkAddress').textContent);
+      copyButton.textContent = 'Copied';
+    } catch (err) {
+      copyButton.textContent = 'Copy failed';
+    }
+    setTimeout(() => { copyButton.textContent = 'Copy'; }, 1500);
+  });
+
+  document.getElementById('networkLinkForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const address = document.getElementById('networkLinkInput').value.trim();
+    if (!address) return;
+    if (!sendToServer({ type: 'linkRequest', address })) {
+      setLinkStatus('Not connected right now. Please try again in a moment.', true);
+    }
+  });
+
+  setInterval(renderNetworkLinks, 15 * 1000);
+});
 
 function updateFileLists(sharedFiles) {
   files = sharedFiles;

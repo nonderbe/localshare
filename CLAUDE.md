@@ -26,11 +26,14 @@ LocalShare is a browser-based peer-to-peer file sharing app. Files never touch t
 **`server.js`** — Express + WebSocket server:
 - Redirects apex domain, `/index.html`, and plain HTTP to the canonical `https://www.local-share.com` host/path (see indexing note below)
 - Maintains a `Map<WebSocket, { id, sharedFiles[] }>` of connected clients
-- Handles 4 WebSocket message types: `register`, `share`, `stopSharing`, `signal`
+- Handles WebSocket message types `register`, `share`, `stopSharing`, `stopSharingFile`, `shareText`, `stopSharingText`, `signal`, plus `linkRequest`, `linkRespond`, `unlink` for network linking
+- Devices only see (and can signal) each other when they share a network: same IPv4 address, or same IPv6 /64 prefix. A device that landed on IPv4 can request to join its household's IPv6 network for 1 hour; a device on that IPv6 network must approve. A link joins one IPv6 /64 to one specific device (identified by a secret per-tab token sent at `register`), never to a whole IPv4 address, since carriers share IPv4 addresses between unrelated households (CGNAT/DS-Lite). Links are held in memory only.
 - `signal` messages are forwarded directly between peers (WebRTC signaling relay)
 - `broadcastUpdate()` fans out device count + file metadata to all clients on any state change
 - Shared file entries expire after 72 hours (checked on every broadcast)
 - `/submit-suggestion` POST route emails suggestions via nodemailer (requires `EMAIL_USER` / `EMAIL_PASS` env vars)
+
+**`network.js`** — IP → network-key parsing (IPv4 exact, IPv6 /64, IPv4-mapped IPv6 treated as IPv4) and the in-memory device-link/request store with expiry and request limits, used by `server.js`.
 
 **`stats.js`** — local usage-stats logging, required by `server.js`:
 - Records, per connection: a salted-hash of the visitor's IP (`sha256(ip + STATS_IP_SALT)`, raw IP never stored) and their country (offline lookup via `ip-location-api`, country-only mode); and per share event: file size or text length. Never records filenames, text labels/content, or download completions (the server has no visibility into whether a shared file is ever actually downloaded — that happens directly over WebRTC).

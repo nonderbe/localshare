@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 const nodemailer = require('nodemailer');
 const stats = require('./stats');
+const { parseNetwork, describeNetwork, createLinkStore } = require('./network');
 
 const app = express();
 const port = process.env.PORT || 10000;
@@ -106,26 +107,60 @@ const clients = new Map();
 const EXPIRATION_TIME = 72 * 60 * 60 * 1000;
 const HEARTBEAT_INTERVAL = 30 * 1000;
 
+const LINK_TTL = 60 * 60 * 1000;
+const LINK_REQUEST_TTL = 2 * 60 * 1000;
+const LINK_REQUESTS_PER_MINUTE_PER_DEVICE = 5;
+const LINK_REQUESTS_PER_MINUTE_PER_NETWORK = 20;
+const LINK_PRUNE_INTERVAL = 15 * 1000;
+const LINK_TOKEN_PATTERN = /^[A-Za-z0-9-]{16,64}$/;
+
+// Links let a device that landed on IPv4 see its household's IPv6 devices
+// anyway. See network.js for why a link targets one device, not an IPv4
+// address.
+const linkStore = createLinkStore({
+  linkTtl: LINK_TTL,
+  requestTtl: LINK_REQUEST_TTL,
+  maxRequestsPerTarget: 5,
+  maxRequestsPerDevice: 3,
+  maxRequestsPerSource: 20,
+  maxRequests: 10000,
+});
+
+// Rate limits for link requests: per device (so neighbours sharing an IPv4
+// address can't use up each other's allowance) and a looser one per source
+// network (so minting new device tokens doesn't buy unlimited requests).
+const recentLinkRequests = new Map(); // 'device:<token>' or 'network:<key>' -> [timestamps]
+
+// Counts a request against every bucket, but only if all of them have room,
+// so a refusal doesn't use up allowance in the others.
+function allowLinkRequest(limits, now) {
+  const buckets = limits.map(([key, limit]) => {
+    const recent = (recentLinkRequests.get(key) || []).filter(t => t > now - 60 * 1000);
+    return { key, limit, recent };
+  });
+  if (buckets.some(({ recent, limit }) => recent.length >= limit)) return false;
+  buckets.forEach(({ key, recent }) => recentLinkRequests.set(key, [...recent, now]));
+  return true;
+}
+
 // Two clients are only shown to each other (and allowed to signal each
-// other) when they're on the same local network. IPv4 behind a home
-// router shares one public address, so we match exactly; IPv6 assigns a
-// distinct address per device out of a /64 prefix the ISP hands the
-// household, so we match on that prefix instead. Anything unparseable or
-// of mismatched families is treated as a different network (fail closed).
-function sameNetwork(ipA, ipB) {
-  if (!ipA || !ipB) return false;
-  if (ipA === ipB) return true;
-  const isV6 = (ip) => ip.includes(':');
-  if (isV6(ipA) !== isV6(ipB)) return false;
-  if (isV6(ipA)) {
-    return ipA.split(':').slice(0, 4).join(':') === ipB.split(':').slice(0, 4).join(':');
-  }
-  return false;
+// other) when they're on the same local network, or when one of them is a
+// device linked to the other's network.
+function canSee(a, b) {
+  if (a === b) return true;
+  if (a.networkKey && a.networkKey === b.networkKey) return true;
+  const now = Date.now();
+  return linkStore.isLinked(a.networkKey, b.linkToken, b.networkKey, now)
+    || linkStore.isLinked(b.networkKey, a.linkToken, a.networkKey, now);
+}
+
+function sendLinkStatus(ws, status, message, expiresIn) {
+  ws.send(JSON.stringify({ type: 'linkStatus', status, message, expiresIn }));
 }
 
 wss.on('connection', (ws, req) => {
   const clientId = Math.random().toString(36).substring(2, 15);
-  const clientIp = stats.extractIp(req);
+  const clientNetwork = parseNetwork(stats.extractIp(req));
   console.log('New connection, assigned ID:', clientId);
 
   ws.isAlive = true;
@@ -134,11 +169,35 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('message', (message) => {
+    // A malformed message must never take the whole server down.
+    try {
+      handleClientMessage(message);
+    } catch (error) {
+      console.error('Failed to handle message from', clientId, ':', error.message);
+    }
+  });
+
+  function handleClientMessage(message) {
     const data = JSON.parse(message);
-    console.log('Received message from', clientId, ':', data);
+    if (!data || typeof data.type !== 'string') return;
+    // Register carries the secret link token, and link messages carry
+    // typed-in addresses; neither belongs in the logs.
+    if (data.type !== 'register' && !data.type.startsWith('link') && data.type !== 'unlink') {
+      console.log('Received message from', clientId, ':', data);
+    }
     if (data.type === 'register') {
       console.log('Client registered - ID:', clientId);
-      clients.set(ws, { id: clientId, ip: clientIp, sharedFiles: [], sharedTexts: [] });
+      const linkToken = typeof data.linkToken === 'string' && LINK_TOKEN_PATTERN.test(data.linkToken)
+        ? data.linkToken
+        : null;
+      clients.set(ws, {
+        id: clientId,
+        networkKey: clientNetwork?.key || null,
+        networkFamily: clientNetwork?.family || null,
+        linkToken,
+        sharedFiles: [],
+        sharedTexts: [],
+      });
       if (ws.statsConnRowId == null) {
         ws.statsConnRowId = stats.recordConnection(req);
       }
@@ -206,7 +265,8 @@ wss.on('connection', (ws, req) => {
       const targetClient = [...clients.entries()].find(
         ([_, info]) => info.id === data.targetId
       );
-      if (targetClient && sameNetwork(clientIp, targetClient[1].ip)) {
+      const senderInfo = clients.get(ws);
+      if (targetClient && senderInfo && canSee(senderInfo, targetClient[1])) {
         console.log('Sending signal from', clientId, 'to', data.targetId);
         targetClient[0].send(JSON.stringify({
           type: 'signal',
@@ -217,8 +277,68 @@ wss.on('connection', (ws, req) => {
       } else {
         console.log('Target client not found or not on the same network:', data.targetId);
       }
+    } else if (data.type === 'linkRequest') {
+      handleLinkRequest(data);
+    } else if (data.type === 'linkRespond') {
+      const now = Date.now();
+      if (!clients.has(ws) || !clientNetwork || typeof data.requestId !== 'string') return;
+      const request = linkStore.takeRequest(data.requestId, clientNetwork.key, now);
+      if (!request) return;
+      if (data.allow === true) {
+        linkStore.addLink(request.toKey, request.deviceToken, request.fromKey, now);
+        console.log('Device link approved by', clientId);
+      }
+      broadcastUpdate();
+    } else if (data.type === 'unlink') {
+      const clientInfo = clients.get(ws);
+      if (!clientInfo || typeof data.linkId !== 'string') return;
+      if (linkStore.removeLink(data.linkId, clientInfo.networkKey, clientInfo.linkToken)) {
+        console.log('Device link removed by', clientId);
+        broadcastUpdate();
+      }
     }
-  });
+  }
+
+  function handleLinkRequest(data) {
+    const clientInfo = clients.get(ws);
+    if (!clientInfo || !clientNetwork || !clientInfo.linkToken) {
+      return sendLinkStatus(ws, 'error', "Linking isn't available on this connection. Try reloading the page.");
+    }
+    if (clientNetwork.family !== 'IPv4') {
+      return sendLinkStatus(ws, 'error', 'Enter your address on the other device instead.');
+    }
+    const target = typeof data.address === 'string' && data.address.length <= 100
+      ? parseNetwork(data.address)
+      : null;
+    if (!target) {
+      return sendLinkStatus(ws, 'error', "That doesn't look like an IPv6 address.");
+    }
+    if (target.family !== 'IPv6') {
+      return sendLinkStatus(ws, 'error', 'Enter the IPv6 address shown on the other device.');
+    }
+    const now = Date.now();
+    if (!allowLinkRequest([
+      [`device:${clientInfo.linkToken}`, LINK_REQUESTS_PER_MINUTE_PER_DEVICE],
+      [`network:${clientNetwork.key}`, LINK_REQUESTS_PER_MINUTE_PER_NETWORK],
+    ], now)) {
+      return sendLinkStatus(ws, 'error', 'Too many requests. Please wait a minute and try again.');
+    }
+    if (linkStore.isLinked(target.key, clientInfo.linkToken, clientNetwork.key, now)) {
+      return sendLinkStatus(ws, 'error', 'Already linked with that network.');
+    }
+    const result = linkStore.addRequest({ deviceToken: clientInfo.linkToken, fromKey: clientNetwork.key, toKey: target.key }, now);
+    if (result === 'source-limit') {
+      return sendLinkStatus(ws, 'error', 'Too many requests are waiting for approval. Please try again in a few minutes.');
+    }
+    if (result === 'full') {
+      return sendLinkStatus(ws, 'error', 'Linking is busy right now. Please try again later.');
+    }
+    // Same reply whether or not anyone is at that address, so the feature
+    // can't be used to probe which addresses have LocalShare open.
+    sendLinkStatus(ws, 'sent', describeNetwork(target.key).display, LINK_REQUEST_TTL);
+    // Only devices on the target network need to hear about a new request.
+    broadcastUpdate(recipient => recipient.networkKey === target.key);
+  }
 
   ws.on('close', () => {
     const clientInfo = clients.get(ws);
@@ -249,7 +369,17 @@ setInterval(() => {
   });
 }, HEARTBEAT_INTERVAL);
 
-function broadcastUpdate() {
+setInterval(() => {
+  const now = Date.now();
+  recentLinkRequests.forEach((timestamps, key) => {
+    if (timestamps.every(t => t <= now - 60 * 1000)) recentLinkRequests.delete(key);
+  });
+  if (linkStore.prune(now)) broadcastUpdate();
+}, LINK_PRUNE_INTERVAL);
+
+// Sends every client (or only those matching `shouldSend`) its own view:
+// the devices, files and texts it may see, plus its network and links.
+function broadcastUpdate(shouldSend = () => true) {
   const now = Date.now();
   const devices = [...clients.values()];
   devices.forEach(client => {
@@ -266,7 +396,8 @@ function broadcastUpdate() {
   // Each client only sees devices/files/text from its own local network,
   // so the payload is computed per recipient rather than broadcast as-is.
   clients.forEach((recipient, clientWs) => {
-    const peers = devices.filter(client => sameNetwork(client.ip, recipient.ip));
+    if (!shouldSend(recipient)) return;
+    const peers = devices.filter(client => canSee(client, recipient));
     const deviceCount = peers.length;
     const sharedFiles = peers.flatMap(client => client.sharedFiles.map(file => ({
       name: file.name,
@@ -279,12 +410,38 @@ function broadcastUpdate() {
       length: text.length,
       ownerId: client.id,
     })));
+    // Expiry is sent as time remaining rather than a timestamp, so the
+    // client's countdown doesn't depend on its clock matching ours.
+    // A link's other side is shown as the network on the far end: the IPv6
+    // network for the linked device, or the address the device asked from
+    // for devices on that network (never its token, which stays secret, and
+    // never where the device is now). A linked device that has moved to
+    // another network doesn't see its link, since it no longer applies there.
+    const key = recipient.networkKey;
+    const network = key ? describeNetwork(key) : null;
+    const links = linkStore.linksFor(key, recipient.linkToken, now)
+      .filter(link => link.networkKey === key || link.deviceKey === key)
+      .map(link => ({
+        id: link.id,
+        display: link.networkKey === key
+          ? `a device at ${describeNetwork(link.deviceKey).display}`
+          : describeNetwork(link.networkKey).display,
+        expiresIn: link.expiresAt - now,
+      }));
+    const linkRequests = key ? linkStore.requestsFor(key, now).map(request => ({
+      id: request.id,
+      from: describeNetwork(request.fromKey).display,
+      expiresIn: request.expiresAt - now,
+    })) : [];
     try {
       clientWs.send(JSON.stringify({
         type: 'update',
         deviceCount,
         sharedFiles,
         sharedTexts,
+        network,
+        links,
+        linkRequests,
       }));
     } catch (error) {
       console.error('Failed to send update to client:', recipient.id, error);

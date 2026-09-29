@@ -126,6 +126,170 @@ button:hover {
   font-weight: 700;
 }
 
+/* Network chip, panel and links. Buttons here opt out of the global
+   neumorphic button style, like .tab-button does. */
+.device-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.device-status #deviceCount { margin: 0; }
+.network-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.network-chip, .network-link-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(108, 99, 255, 0.22);
+  border: 1px solid rgba(108, 99, 255, 0.55);
+  color: #E0E0E0;
+  font-size: 13px;
+  font-weight: 400;
+  box-shadow: none;
+}
+.network-chip { cursor: pointer; }
+.network-chip[hidden] { display: none; }
+.network-chip:hover {
+  box-shadow: none;
+  transform: none;
+  border-color: #6C63FF;
+}
+.network-chip .network-mono { font-size: 13px; }
+.network-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ADE80;
+  flex-shrink: 0;
+}
+.network-tag {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.15);
+}
+.network-caret { transition: transform 0.2s; }
+.network-chip[aria-expanded="true"] .network-caret { transform: rotate(180deg); }
+
+.network-panel {
+  max-width: 460px;
+  margin: 14px auto 0;
+  padding: 16px;
+  text-align: left;
+  background: #232342;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+.network-label, .network-hint, .network-why, .network-fine {
+  color: rgba(224, 224, 224, 0.75);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.network-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 8px 0;
+}
+.network-hint {
+  margin: 14px 0 8px;
+  padding-left: 10px;
+  border-left: 3px solid #FF6B6B;
+}
+.network-why {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.network-fine { margin: 6px 0 0; font-size: 13px; }
+.network-fine.error { color: #FF8A8A; }
+.network-input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: #E0E0E0;
+  font-size: 16px; /* 16px keeps iOS Safari from zooming in on focus */
+}
+.network-input::placeholder { color: rgba(224, 224, 224, 0.45); }
+.network-btn {
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  white-space: nowrap;
+  box-shadow: none;
+}
+.network-btn:hover { box-shadow: none; transform: none; }
+.network-btn-primary {
+  background: linear-gradient(45deg, #6C63FF, #FF6B6B);
+  color: white;
+}
+.network-btn-primary:hover { filter: brightness(1.1); }
+.network-btn-ghost {
+  background: transparent;
+  color: #E0E0E0;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+.network-btn-ghost:hover { border-color: #6C63FF; }
+.network-text-btn {
+  padding: 0;
+  background: none;
+  color: #9D97FF;
+  font-weight: 600;
+  font-size: inherit;
+  box-shadow: none;
+  cursor: pointer;
+}
+.network-text-btn:hover { box-shadow: none; transform: none; text-decoration: underline; }
+
+.network-links:empty { display: none; }
+.network-links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.network-link-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.network-link-time { color: rgba(224, 224, 224, 0.7); }
+
+.link-request {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 107, 107, 0.15);
+  border: 1px solid rgba(255, 107, 107, 0.55);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.link-request-actions { display: flex; gap: 8px; }
+
 /* Text sharing */
 .text-share-controls {
   display: flex;

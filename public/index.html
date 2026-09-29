@@ -56,7 +56,38 @@
   </header>
 
   <div class="container">
-    <p id="deviceCount">0 devices connected</p>
+    <div id="linkRequests"></div>
+    <div class="device-status">
+      <p id="deviceCount">0 devices connected</p>
+      <button type="button" id="networkChip" class="network-chip" aria-expanded="false" aria-controls="networkPanel" hidden>
+        <span class="network-dot" aria-hidden="true"></span>
+        <span id="networkChipFamily" class="network-tag"></span>
+        <span id="networkChipAddress" class="network-mono"></span>
+        <span class="network-caret" aria-hidden="true">▾</span>
+      </button>
+    </div>
+    <div id="networkLinks" class="network-links"></div>
+    <div id="networkPanel" class="network-panel" hidden>
+      <div class="network-label">Your network</div>
+      <div class="network-row">
+        <span id="networkAddress" class="network-mono"></span>
+        <button type="button" id="networkCopy" class="network-btn network-btn-ghost">Copy</button>
+      </div>
+      <p class="network-hint">
+        <span id="networkHintFromV6">Another device on your Wi-Fi may connect with an <strong>IPv4</strong> address instead, and won't show up here. If one is missing, open this panel on that device and enter the address above.</span>
+        <span id="networkHintFromV4" hidden>Another device on your Wi-Fi may connect with an <strong>IPv6</strong> address instead, and won't show up here. If one is missing, enter the address it shows.</span>
+        <button type="button" id="networkWhyToggle" class="network-text-btn" aria-expanded="false" aria-controls="networkWhy">Why?</button>
+      </p>
+      <p id="networkWhy" class="network-why" hidden>Most home connections give each device both an IPv4 and an IPv6 address, and each browser picks one. LocalShare only shows devices whose addresses match, so it never guesses: you link the two yourself.</p>
+      <div id="networkLinkSection" hidden>
+        <form id="networkLinkForm" class="network-row">
+          <input id="networkLinkInput" class="network-input network-mono" type="text" placeholder="e.g. 2001:db8:1:2::/64" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="100" aria-label="Address shown on the other device">
+          <button type="submit" class="network-btn network-btn-primary">Link</button>
+        </form>
+        <p id="networkLinkStatus" class="network-fine" role="status" hidden></p>
+        <p class="network-fine">The other device confirms the link. It expires after 1 hour.</p>
+      </div>
+    </div>
     <div class="tab-switcher">
       <button type="button" class="tab-button active" data-tab="info" onclick="switchTab('info')">Info</button>
       <button type="button" class="tab-button pulse" data-tab="files" onclick="switchTab('files')">Files</button>
