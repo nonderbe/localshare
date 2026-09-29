@@ -31,6 +31,7 @@ LocalShare is a browser-based peer-to-peer file sharing app. Files never touch t
 - `signal` messages are forwarded directly between peers (WebRTC signaling relay)
 - `broadcastUpdate()` fans out device count + file metadata to all clients on any state change
 - Shared file entries expire after 72 hours (checked on every broadcast)
+- Logging: only message types, client IDs and counts. Never log message contents — they include file names, IP addresses (inside WebRTC signal SDP/ICE candidates), typed-in link addresses and link tokens, and the privacy page promises file names are never logged.
 - `/submit-suggestion` POST route emails suggestions via nodemailer (requires `EMAIL_USER` / `EMAIL_PASS` env vars)
 
 **`network.js`** — IP → network-key parsing (IPv4 exact, IPv6 /64, IPv4-mapped IPv6 treated as IPv4) and the in-memory device-link/request store with expiry and request limits, used by `server.js`.

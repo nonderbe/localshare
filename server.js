@@ -173,18 +173,18 @@ wss.on('connection', (ws, req) => {
     try {
       handleClientMessage(message);
     } catch (error) {
-      console.error('Failed to handle message from', clientId, ':', error.message);
+      // Only the error type: a parse error's message quotes the raw input.
+      console.error('Failed to handle message from', clientId, ':', error.name);
     }
   });
 
   function handleClientMessage(message) {
     const data = JSON.parse(message);
     if (!data || typeof data.type !== 'string') return;
-    // Register carries the secret link token, and link messages carry
-    // typed-in addresses; neither belongs in the logs.
-    if (data.type !== 'register' && !data.type.startsWith('link') && data.type !== 'unlink') {
-      console.log('Received message from', clientId, ':', data);
-    }
+    // Log only the message type, never its contents: those include file
+    // names, IP addresses (in WebRTC signals), typed-in link addresses and
+    // link tokens.
+    console.log('Received', data.type.slice(0, 40), 'from', clientId);
     if (data.type === 'register') {
       console.log('Client registered - ID:', clientId);
       const linkToken = typeof data.linkToken === 'string' && LINK_TOKEN_PATTERN.test(data.linkToken)
@@ -233,7 +233,7 @@ wss.on('connection', (ws, req) => {
         }
       });
       clientInfo.sharedFiles = updatedFiles;
-      console.log('Client updated shared files:', clientInfo.id, 'Files:', clientInfo.sharedFiles);
+      console.log('Client updated shared files:', clientInfo.id, 'count:', clientInfo.sharedFiles.length);
       broadcastUpdate();
     } else if (data.type === 'stopSharing') {
       const clientInfo = clients.get(ws);
@@ -243,7 +243,7 @@ wss.on('connection', (ws, req) => {
     } else if (data.type === 'stopSharingFile') {
       const clientInfo = clients.get(ws);
       clientInfo.sharedFiles = clientInfo.sharedFiles.filter(file => file.name !== data.name);
-      console.log('Client stopped sharing file:', clientInfo.id, 'name:', data.name);
+      console.log('Client stopped sharing file:', clientInfo.id);
       broadcastUpdate();
     } else if (data.type === 'shareText') {
       const clientInfo = clients.get(ws);
