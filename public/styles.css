@@ -235,7 +235,7 @@ button:hover {
 .network-text-btn {
   padding: 0;
   background: none;
-  color: #9D97FF;
+  color: #FF6B6B;
   font-weight: 600;
   font-size: inherit;
   box-shadow: none;
@@ -457,7 +457,11 @@ button:hover {
 .about-container p { font-size: 16px; line-height: 1.6; margin-bottom: 20px; }
 .about-container li { font-size: 16px; line-height: 1.6; margin-bottom: 10px; }
 .about-container ol, .about-container ul { padding-left: 24px; margin-bottom: 20px; }
-.about-container a:not(.btn-back), .faq-container a:not(.btn-back) { color: #9D97FF; }
+.container a:not(.btn-back), .faq-container a:not(.btn-back) { color: #FF6B6B; font-weight: 700; }
+.container a:not(.btn-back):hover, .faq-container a:not(.btn-back):hover { color: #FF9B9B; }
+.owner { display: flex; align-items: center; gap: 20px; margin-bottom: 10px; }
+.owner img { width: 112px; height: 112px; border-radius: 50%; object-fit: cover; object-position: center 20%; flex-shrink: 0; }
+.owner p { margin-bottom: 0; }
 .guide-list { list-style: none; padding-left: 0 !important; }
 .guide-card { margin-bottom: 30px; }
 .guide-card h2 { font-size: 22px; margin-bottom: 8px; }
