@@ -277,6 +277,25 @@ button:hover {
 }
 .link-request-actions { display: flex; gap: 8px; }
 
+.support-prompt {
+  max-width: 800px;
+  margin: 20px auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: rgba(108, 99, 255, 0.18);
+  border: 1px solid rgba(108, 99, 255, 0.55);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.support-prompt[hidden] { display: none; }
+.support-prompt p { margin: 0; flex: 1; min-width: 220px; }
+.support-prompt a { color: #FF6B6B; font-weight: 700; }
+
 /* Text sharing */
 .text-share-controls {
   display: flex;

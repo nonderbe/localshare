@@ -1400,6 +1400,30 @@ function receiveFileWithProgress(fileId) {
   updateProgress(fileId, 100, `Received ${transfer.fileName}`, 'receive');
   isDownloading = false;
   processDownloadQueue();
+  if (!isDownloading) showSupportPrompt();
 }
+
+// Shown once a batch of downloads has finished, and then not again for 30 days
+// after it is dismissed. localStorage can be unavailable (private windows,
+// blocked site data); the prompt then simply shows after each batch.
+const SUPPORT_PROMPT_KEY = 'supportPromptDismissedAt';
+const SUPPORT_PROMPT_QUIET_MS = 30 * 24 * 60 * 60 * 1000;
+
+function showSupportPrompt() {
+  const prompt = document.getElementById('supportPrompt');
+  if (!prompt) return;
+  try {
+    const dismissedAt = Number(localStorage.getItem(SUPPORT_PROMPT_KEY)) || 0;
+    if (Date.now() - dismissedAt < SUPPORT_PROMPT_QUIET_MS) return;
+  } catch (e) {}
+  prompt.hidden = false;
+}
+
+document.getElementById('supportPromptDismiss')?.addEventListener('click', () => {
+  document.getElementById('supportPrompt').hidden = true;
+  try {
+    localStorage.setItem(SUPPORT_PROMPT_KEY, String(Date.now()));
+  } catch (e) {}
+});
 
 window.onload = registerDevice;
