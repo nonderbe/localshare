@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How a file gets from one browser to another without a server - LocalShare</title>
+  <meta name="description" content="A plain-language explanation of peer-to-peer file transfer in the browser: WebRTC data channels, signaling, STUN, relays, encryption and chunking.">
+  <link rel="canonical" href="https://www.local-share.com/guides/how-browser-file-transfer-works.html">
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://www.local-share.com/guides/how-browser-file-transfer-works.html">
+  <meta property="og:site_name" content="LocalShare">
+  <meta property="og:title" content="How a file gets from one browser to another without a server">
+  <meta property="og:description" content="A plain-language explanation of peer-to-peer file transfer in the browser: WebRTC data channels, signaling, STUN, relays, encryption and chunking.">
+  <meta property="og:image" content="https://www.local-share.com/og-image.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="How a file gets from one browser to another without a server">
+  <meta name="twitter:description" content="A plain-language explanation of peer-to-peer file transfer in the browser: WebRTC data channels, signaling, STUN, relays, encryption and chunking.">
+  <meta name="twitter:image" content="https://www.local-share.com/og-image.jpg">
+
+  <link rel="stylesheet" href="/styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5259703064510826" crossorigin="anonymous"></script>
+</head>
+<body>
+  <header class="hero">
+    <h1>How a file gets from one browser to another without a server</h1>
+    <p>WebRTC, signaling and what the server does and does not see</p>
+  </header>
+
+  <article class="container about-container">
+    <p>"Your files never touch our server" is an easy thing for a website to claim. This page explains how that actually works in LocalShare, which parts do involve a server, and where the limits are.</p>
+
+    <h2>The problem: browsers cannot simply call each other</h2>
+    <p>A web page can open a connection to a server, but two browsers have no way to find each other on their own. Neither knows the other's address, and home routers reject unexpected incoming connections. Something has to introduce them. That introduction is the only job a server needs to do.</p>
+
+    <h2>Step 1: signaling</h2>
+    <p>When you open LocalShare, the page opens a WebSocket — a connection that stays open in both directions — to the server, and is given a random identifier. When you share a file, the page sends the server a short description of it: name, size and which device has it. The server passes that list to the other devices on your network. The file itself stays where it is.</p>
+    <p>When another device asks to download the file, the two browsers exchange a handful of small messages through the server. These contain the technical details each side needs to reach the other: which addresses it can be contacted on and which encryption fingerprint it will use. This exchange is called signaling, and it amounts to a few kilobytes.</p>
+
+    <h2>Step 2: finding a route</h2>
+    <p>Each browser collects a list of ways it might be reachable — its address on the local network and, by asking a public helper called a STUN server, the address it appears to have from the outside. The two browsers then try the combinations until one works. This procedure is called ICE. On a home network the winning route is almost always the direct one, device to device across your own router.</p>
+    <p>If no direct route can be found — some routers and firewalls block them — WebRTC can fall back to a relay, known as a TURN server, which forwards the data between the two sides. The relay only sees encrypted traffic passing through and cannot read it, but in that case the data does leave the local network on its way.</p>
+
+    <h2>Step 3: the data channel</h2>
+    <p>Once a route is found, the browsers open a WebRTC data channel between them. WebRTC is the same technology video calls use in the browser; a data channel is its mechanism for sending arbitrary bytes instead of audio and video.</p>
+    <p>Encryption is not optional in WebRTC. Every data channel is protected with DTLS, a close relative of the TLS that secures HTTPS. The keys are negotiated directly between the two browsers, so the signaling server never has them.</p>
+
+    <h2>Step 4: sending the file in pieces</h2>
+    <p>The sending browser reads the file 64&nbsp;KB at a time and writes each piece into the channel. It watches how much data is waiting to go out and pauses when the queue gets long, so a fast disk does not flood a slower Wi-Fi link. The receiving browser collects the pieces, counts bytes to drive the progress bar, and when the total matches the announced size, assembles them and hands the result to the normal download mechanism.</p>
+    <p>Two practical consequences follow from this design:</p>
+    <ul>
+      <li><strong>The sender must stay on the page.</strong> There is no copy anywhere else to download from.</li>
+      <li><strong>Very large files are limited by the receiving device.</strong> The browser has to hold the pieces until the file is complete, so a phone with little free memory or storage may struggle with a file of several gigabytes where a laptop would not.</li>
+    </ul>
+
+    <h2>What the server sees, and what it does not</h2>
+    <p>The LocalShare server sees that a browser connected and from which IP address, which it uses to decide which devices are on the same network. It handles the list of shared file names and sizes so other devices can display them, and it relays the signaling messages. It does not receive file contents, and it has no way to know whether a shared file was ever downloaded, because that happens on a connection it is not part of.</p>
+    <p>File listings are held in memory and expire after 72 hours. The <a href="/privacy.html">privacy page</a> describes the small amount of anonymised usage data that is kept.</p>
+
+    <h2>What this does not protect against</h2>
+    <p>Peer-to-peer transfer removes the cloud from the picture; it does not make the local network trustworthy. Anyone on the same network who opens the page can see and download what is being shared. On a home network that is the point. On a shared network — an office, a student house, a café — only share what you are happy for the other people there to have, and stop sharing when you are done.</p>
+
+    <h2>Why not just use a server?</h2>
+    <p>Routing files through a server would be simpler to build and would work between any two devices anywhere. It would also mean paying for the bandwidth and storage of every transfer, holding other people's files, and making every transfer as slow as the sender's upload speed. Keeping the server out of the data path is what makes it possible to run a tool like this for free.</p>
+
+    <p><a href="/guides/">All guides</a></p>
+    <a href="/" class="btn-back">Open LocalShare</a>
+  </article>
+
+  <footer>
+    <nav class="page-links">
+      <a href="/">Home</a>
+      <a href="/guides/">Guides</a>
+      <a href="/about.html">About</a>
+      <a href="/faq.html">FAQ</a>
+      <a href="/suggestions.html">Feedback</a>
+      <a href="/privacy.html">Privacy</a>
+    </nav>
+    <p>&copy; 2025-2026 LocalShare.</p>
+  </footer>
+</body>
+</html>

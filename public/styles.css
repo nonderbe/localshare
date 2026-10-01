@@ -113,19 +113,6 @@ button:hover {
 }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
-.tab-button.pulse {
-  border-color: #6C63FF;
-  animation: pulse-glow 1.8s ease-in-out infinite;
-}
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(108, 99, 255, 0.55); }
-  50% { box-shadow: 0 0 0 8px rgba(108, 99, 255, 0); }
-}
-.info-cta {
-  margin-top: 24px;
-  font-weight: 700;
-}
-
 /* Network chip, panel and links. Buttons here opt out of the global
    neumorphic button style, like .tab-button does. */
 .device-status {
@@ -468,6 +455,12 @@ button:hover {
   margin-bottom: 20px;
 }
 .about-container p { font-size: 16px; line-height: 1.6; margin-bottom: 20px; }
+.about-container li { font-size: 16px; line-height: 1.6; margin-bottom: 10px; }
+.about-container ol, .about-container ul { padding-left: 24px; margin-bottom: 20px; }
+.about-container a:not(.btn-back), .faq-container a:not(.btn-back) { color: #9D97FF; }
+.guide-list { list-style: none; padding-left: 0 !important; }
+.guide-card { margin-bottom: 30px; }
+.guide-card h2 { font-size: 22px; margin-bottom: 8px; }
 
 /* FAQ Items */
 .faq-item { margin-bottom: 30px; }
@@ -503,7 +496,10 @@ footer {
   padding: 20px;
   margin-top: 40px;
 }
-footer a { color: #FF6B6B; }
+footer a { color: white; }
+footer .page-links { margin: 0 0 12px; flex-wrap: wrap; }
+footer .page-links a { color: white; }
+footer .page-links a:hover { color: #1A1A2E; }
 
 /* Responsiviteit */
 @media (max-width: 768px) {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LocalShare</title>
+  <title>LocalShare — Share files between devices on the same Wi-Fi</title>
   <meta name="description" content="Share files quickly and securely across your local network with LocalShare. No cloud required!">
   <meta name="keywords" content="file sharing, local network, LocalShare, secure file transfer">
   <link rel="canonical" href="https://www.local-share.com/">
@@ -30,7 +30,7 @@
 
   <link rel="stylesheet" href="/styles.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5259703064510826" crossorigin="anonymous"></script>
+  <meta name="google-adsense-account" content="ca-pub-5259703064510826">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/vanilla-tilt/1.7.0/vanilla-tilt.min.js"></script>
   <script type="application/ld+json">
   {
@@ -89,25 +89,12 @@
       </div>
     </div>
     <div class="tab-switcher">
-      <button type="button" class="tab-button active" data-tab="info" onclick="switchTab('info')">Info</button>
-      <button type="button" class="tab-button pulse" data-tab="files" onclick="switchTab('files')">Files</button>
+      <button type="button" class="tab-button active" data-tab="files" onclick="switchTab('files')">Files</button>
       <button type="button" class="tab-button" data-tab="text" onclick="switchTab('text')">Text</button>
     </div>
   </div>
 
-  <div id="tab-info" class="tab-panel active">
-    <div class="container about-container">
-      <h2>What is LocalShare?</h2>
-      <p>LocalShare is a free, peer-to-peer file sharing tool for devices on the same local network. There's nothing to install and no cloud in between — files travel directly from one device to another over a secure WebSocket/WebRTC connection, so transfers are fast and your data never leaves your network.</p>
-      <h2>How it works</h2>
-      <p>Open this page on two or more devices connected to the same Wi-Fi or Ethernet network. Each device that loads the page shows up automatically. Click "Share Files" or "Share Folder" and pick what you want to share, and it instantly becomes available for the other connected devices to download — no accounts, no uploads, no waiting.</p>
-      <h2>Why use LocalShare</h2>
-      <p>Because your files are sent directly between devices instead of round-tripping through a remote server, transfers are typically much faster than cloud services, especially for large files. LocalShare works in any modern browser on Windows, macOS, iOS, Android, and Linux, and keeps your data private since nothing is stored on external servers.</p>
-      <p class="info-cta">Ready to try it? Switch to the <strong>Files</strong> tab above to start sharing.</p>
-    </div>
-  </div>
-
-  <div id="tab-files" class="tab-panel">
+  <div id="tab-files" class="tab-panel active">
     <div class="container">
       <div class="button-group">
         <button onclick="document.getElementById('fileInput').click()">Share Files</button>
@@ -162,11 +149,44 @@
 
 <div id="progressContainer"></div>
 
+  <main class="container about-container">
+    <h2>What is LocalShare?</h2>
+    <p>LocalShare is a free tool for moving files and text between devices that are on the same local network. It runs entirely in the browser, so there is nothing to install and no account to create. Files travel directly from one device to the other over an encrypted WebRTC connection — they are never uploaded to this site or to any cloud service along the way.</p>
+
+    <h2>How to share a file</h2>
+    <ol>
+      <li>Open <strong>www.local-share.com</strong> on both devices while they are connected to the same Wi-Fi or wired network. The device counter at the top goes up as each one joins.</li>
+      <li>On the sending device, choose <strong>Share Files</strong> or <strong>Share Folder</strong>, or drag files onto the "Shared by You" box.</li>
+      <li>On the receiving device, the files appear under "Shared by Others". Tick the ones you want and press <strong>Download</strong>.</li>
+      <li>Keep both pages open until the progress bar finishes. The sending device has to stay on the page, because that is where the file is coming from.</li>
+    </ol>
+    <p>The <strong>Text</strong> tab works the same way for links, notes, addresses or anything else you would otherwise email to yourself: type or paste it on one device and copy it on the other.</p>
+
+    <h2>Why it is fast and private</h2>
+    <p>A cloud service makes every file take two trips: up to a data centre, then back down to the other device. On most home connections the upload leg is the slow one. LocalShare skips both trips. Once two devices have found each other, the data only has to cross your own router, so speed is set by your Wi-Fi or Ethernet, not by your internet plan.</p>
+    <p>The server behind this page only does one job: it passes a short connection handshake between two browsers so they can find each other, and it only introduces devices that are on the same network. It never receives file contents and does not log file names. The <a href="/privacy.html">privacy page</a> lists exactly what is recorded.</p>
+
+    <h2>What it works on</h2>
+    <p>Any current browser on Android, iOS, macOS, Windows, Linux or ChromeOS — which makes it handy for the combinations that have no built-in option, such as Android to Mac or iPhone to Windows. There is no enforced file size limit; very large files simply take longer and need both pages to stay open.</p>
+
+    <h2>Guides</h2>
+    <ul class="guide-list">
+      <li><a href="/guides/android-to-mac.html">Move photos and files from an Android phone to a Mac without a cable</a></li>
+      <li><a href="/guides/airdrop-alternatives.html">AirDrop alternatives for Windows, Android and mixed households</a></li>
+      <li><a href="/guides/send-video-without-compression.html">Send a video without it being compressed</a></li>
+      <li><a href="/guides/same-wifi-devices-not-found.html">Same Wi-Fi, but the devices can't see each other: what to check</a></li>
+      <li><a href="/guides/how-browser-file-transfer-works.html">How a file gets from one browser to another without a server</a></li>
+      <li><a href="/guides/faster-local-transfers.html">Getting faster transfers on your home network</a></li>
+    </ul>
+    <p>Something not working? The <a href="/faq.html">FAQ</a> covers the common cases.</p>
+  </main>
+
   <footer>
     <nav class="page-links">
+      <a href="/guides/">Guides</a>
       <a href="/about.html">About</a>
       <a href="/faq.html">FAQ</a>
-      <a href="/suggestions.html">Your feedback</a>
+      <a href="/suggestions.html">Feedback</a>
       <a href="/privacy.html">Privacy</a>
     </nav>
     <p>&copy; 2025-2026 LocalShare.</p>

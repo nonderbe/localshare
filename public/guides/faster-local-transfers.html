@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Getting faster transfers on your home network - LocalShare</title>
+  <meta name="description" content="What limits file transfer speed between devices at home: Wi-Fi band, distance, mesh hops, Ethernet, and the devices themselves. Practical ways to speed it up.">
+  <link rel="canonical" href="https://www.local-share.com/guides/faster-local-transfers.html">
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://www.local-share.com/guides/faster-local-transfers.html">
+  <meta property="og:site_name" content="LocalShare">
+  <meta property="og:title" content="Getting faster transfers on your home network">
+  <meta property="og:description" content="What limits file transfer speed between devices at home: Wi-Fi band, distance, mesh hops, Ethernet, and the devices themselves. Practical ways to speed it up.">
+  <meta property="og:image" content="https://www.local-share.com/og-image.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Getting faster transfers on your home network">
+  <meta name="twitter:description" content="What limits file transfer speed between devices at home: Wi-Fi band, distance, mesh hops, Ethernet, and the devices themselves. Practical ways to speed it up.">
+  <meta name="twitter:image" content="https://www.local-share.com/og-image.jpg">
+
+  <link rel="stylesheet" href="/styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5259703064510826" crossorigin="anonymous"></script>
+</head>
+<body>
+  <header class="hero">
+    <h1>Getting faster transfers on your home network</h1>
+    <p>Where the time goes, and what actually helps</p>
+  </header>
+
+  <article class="container about-container">
+    <p>A transfer between two devices at home never touches your internet connection, so the speed on your broadband contract is irrelevant. What matters is the slowest link between the two devices. This guide covers where that usually is and what to do about it.</p>
+
+    <h2>What speed to expect</h2>
+    <p>Networking speeds are quoted in megabits per second; file sizes are in megabytes. Divide by eight to convert. A link that genuinely carries 400&nbsp;Mbit/s moves about 50&nbsp;MB per second, so a 1&nbsp;GB video takes roughly twenty seconds. The number printed on a router's box is a theoretical maximum across all its radios combined and has little to do with what one device will see.</p>
+    <p>As a rough guide to real-world figures: a device on 2.4&nbsp;GHz Wi-Fi might manage 3 to 8&nbsp;MB per second, a device on 5&nbsp;GHz in the same room 30 to 80, and gigabit Ethernet a little over 100.</p>
+
+    <h2>Wi-Fi to Wi-Fi counts twice</h2>
+    <p>When both devices are wireless, every piece of data travels through the air twice: from the sender to the router, and from the router to the receiver. Both hops share the same airtime, so the throughput is roughly halved compared with what either device would get on its own. This is the single biggest reason local transfers feel slower than expected.</p>
+    <p>The fix is to put one end on a cable. If the receiving computer is plugged into the router by Ethernet, the data only crosses the air once. For a laptop without an Ethernet port, a USB-C Ethernet adapter costs little and makes a large difference for big transfers.</p>
+
+    <h2>Use the 5&nbsp;GHz or 6&nbsp;GHz band</h2>
+    <p>The 2.4&nbsp;GHz band reaches further and passes through walls better, but it is slow and crowded — neighbours' networks, Bluetooth and microwave ovens all share it. If your router broadcasts one network name for all bands, devices choose for themselves and phones at the edge of coverage tend to cling to 2.4&nbsp;GHz. Moving closer to the router before starting a large transfer is often enough to make a device switch up.</p>
+
+    <h2>Distance and walls matter more than the router</h2>
+    <p>Wi-Fi speed falls off quickly with distance, and faster with each wall or floor in the way. Two devices in the same room as the router can be ten times faster than the same two devices a couple of rooms away. For a one-off large transfer, carrying the phone to the room with the router is the cheapest upgrade available.</p>
+
+    <h2>Mesh systems and repeaters</h2>
+    <p>Mesh Wi-Fi improves coverage, but each wireless hop between mesh units costs speed. If two devices are connected to different mesh units that talk to each other wirelessly, the data may cross the air three or four times. Connecting both devices to the same unit, or linking the mesh units to each other by cable, avoids that. Simple plug-in repeaters halve the speed by design.</p>
+
+    <h2>The devices themselves</h2>
+    <ul>
+      <li><strong>Keep the page in the foreground.</strong> Phones slow down or suspend browser tabs that are not visible, and the screen locking has the same effect. Keep the sending phone awake until the transfer finishes.</li>
+      <li><strong>Battery saver modes</strong> reduce Wi-Fi performance and background activity. Turn them off for the duration.</li>
+      <li><strong>Storage speed.</strong> An older phone with nearly full storage, or a computer saving to a USB stick or a spinning hard drive, can be slower at writing the file than the network is at delivering it.</li>
+      <li><strong>Many small files are slower than one large one.</strong> Each file has a little overhead to set up. Several thousand tiny files will take longer than a single file of the same total size; zipping them first helps.</li>
+    </ul>
+
+    <h2>Things that do not help</h2>
+    <ul>
+      <li><strong>A faster internet plan.</strong> Local transfers do not use it.</li>
+      <li><strong>Closing other browser tabs,</strong> unless the device is genuinely short of memory.</li>
+      <li><strong>Restarting the router,</strong> unless it has been misbehaving in general.</li>
+    </ul>
+
+    <h2>A quick test</h2>
+    <p>To find out where your bottleneck is, share one file of around 500&nbsp;MB with <a href="/">LocalShare</a> and time it. Then repeat with both devices next to the router, and again with one of them on a cable if you can. The step that makes the biggest difference tells you what to change for good.</p>
+    <p>If a transfer will not start at all, that is a different problem — see <a href="/guides/same-wifi-devices-not-found.html">devices that cannot find each other</a>.</p>
+
+    <p><a href="/guides/">All guides</a></p>
+    <a href="/" class="btn-back">Open LocalShare</a>
+  </article>
+
+  <footer>
+    <nav class="page-links">
+      <a href="/">Home</a>
+      <a href="/guides/">Guides</a>
+      <a href="/about.html">About</a>
+      <a href="/faq.html">FAQ</a>
+      <a href="/suggestions.html">Feedback</a>
+      <a href="/privacy.html">Privacy</a>
+    </nav>
+    <p>&copy; 2025-2026 LocalShare.</p>
+  </footer>
+</body>
+</html>

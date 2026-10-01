@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 const nodemailer = require('nodemailer');
 const stats = require('./stats');
+const diskAlert = require('./disk-alert');
 const { parseNetwork, describeNetwork, createLinkStore } = require('./network');
 
 const app = express();
@@ -457,6 +458,12 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
   }
+});
+
+diskAlert.start({
+  sendMail: (options, callback) => transporter.sendMail(options, callback),
+  from: process.env.EMAIL_USER,
+  to: process.env.NOTIFY_EMAIL
 });
 
 // POST-route voor suggesties

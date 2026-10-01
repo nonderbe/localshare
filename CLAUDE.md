@@ -43,6 +43,8 @@ LocalShare is a browser-based peer-to-peer file sharing app. Files never touch t
 - `scripts/update-geo-db.js` (`npm run updatedb`) does a one-time build of the local geo-IP database; normally unnecessary after initial setup since `ip-location-api` auto-updates it (twice weekly) while the server process keeps running.
 - `scripts/backfill-historical-shares.js` is a one-off maintenance tool (already run once) that extracted historical file/text share events from the pre-existing pm2 log — not part of normal operation.
 
+**`disk-alert.js`** — started by `server.js`; checks the root disk hourly and emails `NOTIFY_EMAIL` (same nodemailer transport as suggestions) when usage reaches 85%, repeating every 24 hours while it stays there. Exists because the server's 4.9GB disk is shared with other software and filled up completely on 2026-09-30 without anyone noticing. Fails open like `stats.js`.
+
 **`public/client.js`** — All peer-to-peer logic runs in the browser:
 - On load, opens a WebSocket to the server and registers to get a `clientId`
 - File metadata (name, size, timestamp, ownerId) is shared via WebSocket; actual file bytes never go through the server
@@ -51,7 +53,7 @@ LocalShare is a browser-based peer-to-peer file sharing app. Files never touch t
 - `transfers` Map tracks in-flight transfers keyed by a unique `fileId` (timestamp + filename), used to drive per-file progress bars
 - STUN: `stun.l.google.com:19302`; the offer-side uses only STUN, the answer-side also includes a TURN fallback
 
-**`public/`** — Static HTML/CSS pages (`index.html`, `about.html`, `faq.html`, `suggestions.html`, `styles.css`), plus `favicon.svg`/`favicon-*.png`/`apple-touch-icon.png`, `og-image.jpg`, and `manifest.json` for search/social/PWA metadata.
+**`public/`** — Static HTML/CSS pages (`index.html`, `about.html`, `faq.html`, `privacy.html`, `suggestions.html`, `styles.css`, and the long-form articles in `guides/`), plus `favicon.svg`/`favicon-*.png`/`apple-touch-icon.png`, `og-image.jpg`, and `manifest.json` for search/social/PWA metadata.
 
 **Tesla third-party app public key** (`/.well-known/appspecific/com.tesla.3p.public-key.pem`) is no longer served by this app. It's now served directly on the home server by a standalone script, `tesla-pem.py`, listening on port 10001 — separate from this Express app's port 10000. This repo's `.wellknown/appspecific/com.tesla.3p.public-key.pem` and `public/.wellknown/appspecific/com.tesla.3p.public-key.pem` files are stale leftovers from the old in-app-serving approach and are no longer what's actually live.
 
@@ -63,7 +65,12 @@ LocalShare is a browser-based peer-to-peer file sharing app. Files never touch t
 | `EMAIL_USER` | Gmail address for suggestion emails |
 | `EMAIL_PASS` | Gmail app password for suggestion emails |
 | `NOTIFY_EMAIL` | Recipient address for suggestion emails |
+| `DISK_ALERT_PERCENT` | Disk usage percentage at which `disk-alert.js` sends its warning email (default: `85`) |
 | `STATS_IP_SALT` | Secret salt mixed into hashed visitor IPs before storing in `data/stats.db`; IPs are never stored raw. Set only in the server's `ecosystem.config.js` — not in this repo. |
+
+## AdSense
+
+The AdSense script is loaded only on the article pages in `public/guides/` — never on the tool screen (`index.html`), the guides index, or the form/boilerplate pages. Google rejected the site three times for "ads on screens without publisher-content" / "low value content" while the script sat on the tool page. `index.html` carries only the `google-adsense-account` meta tag (site-ownership verification, serves no ads). The pages are hand-written static HTML with a shared head/footer, so a new guide means copying an existing one and adding it to `guides/index.html`, the homepage guide list and `sitemap.xml`.
 
 ## Google Search Console indexing
 

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Same Wi-Fi, but the devices can't see each other: what to check - LocalShare</title>
+  <meta name="description" content="Why two devices on the same Wi-Fi may not find each other: mobile data, guest networks, VPNs, private relay, client isolation and IPv4 versus IPv6.">
+  <link rel="canonical" href="https://www.local-share.com/guides/same-wifi-devices-not-found.html">
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://www.local-share.com/guides/same-wifi-devices-not-found.html">
+  <meta property="og:site_name" content="LocalShare">
+  <meta property="og:title" content="Same Wi-Fi, but the devices can't see each other: what to check">
+  <meta property="og:description" content="Why two devices on the same Wi-Fi may not find each other: mobile data, guest networks, VPNs, private relay, client isolation and IPv4 versus IPv6.">
+  <meta property="og:image" content="https://www.local-share.com/og-image.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Same Wi-Fi, but the devices can't see each other: what to check">
+  <meta name="twitter:description" content="Why two devices on the same Wi-Fi may not find each other: mobile data, guest networks, VPNs, private relay, client isolation and IPv4 versus IPv6.">
+  <meta name="twitter:image" content="https://www.local-share.com/og-image.jpg">
+
+  <link rel="stylesheet" href="/styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5259703064510826" crossorigin="anonymous"></script>
+</head>
+<body>
+  <header class="hero">
+    <h1>Same Wi-Fi, but the devices can't see each other: what to check</h1>
+    <p>A troubleshooting checklist for local file sharing</p>
+  </header>
+
+  <article class="container about-container">
+    <p>Local sharing tools all depend on one assumption: that the two devices are on the same network. When they do not find each other, it is nearly always because that assumption is false in a way that is not obvious from the Wi-Fi icon. This checklist goes from the most common cause to the least.</p>
+
+    <h2>How LocalShare decides two devices belong together</h2>
+    <p>It helps to know what is being compared. When a browser opens LocalShare, the server sees the public internet address the connection came from. Every device behind the same home router normally shares that address, so two devices with a matching address are treated as being on the same network and are shown to each other. Anything that makes one device appear to come from a different address breaks the match.</p>
+    <p>You can see the address your device is using by tapping the small chip next to the device counter on the home page.</p>
+
+    <h2>1. One device is on mobile data</h2>
+    <p>Phones switch to mobile data when the Wi-Fi signal is weak or the network has no internet for a moment, and they do not always switch back promptly. Check that the Wi-Fi symbol is showing, and if in doubt turn mobile data off briefly and reload the page.</p>
+
+    <h2>2. A VPN or private relay is switched on</h2>
+    <p>A VPN sends your traffic out through a server somewhere else, so the device no longer appears to be at your home address. The same is true of Apple's iCloud Private Relay in Safari, of "secure browsing" features in some browsers, and of many corporate laptops that route everything through the company network. Turn the feature off for a moment, or use a different browser on that device, and reload.</p>
+
+    <h2>3. One device is on the guest network</h2>
+    <p>Most routers offer a guest Wi-Fi that is deliberately walled off from the main one. A device on the guest network will usually still be matched, because it shares the same public address, but the router may then block the direct connection between the two devices, so the transfer fails to start or runs slowly. Put both devices on the same network name.</p>
+
+    <h2>4. The router isolates wireless clients</h2>
+    <p>Hotels, offices, universities and cafés commonly enable "client isolation" (also called AP isolation), which stops devices on the Wi-Fi from talking to each other directly. Some home routers have the same setting. On a network you control, look for it under the wireless or security settings. On a network you do not control, there is no way around it short of using a phone's hotspot instead.</p>
+
+    <h2>5. One device is using IPv4 and the other IPv6</h2>
+    <p>This one is invisible and increasingly common. Most home connections now provide both the older IPv4 addressing and the newer IPv6. Each browser picks whichever it can connect with fastest, and two devices sitting side by side can make different choices. One then appears to the server with an IPv4 address and the other with an IPv6 address, and nothing about those two addresses says they belong to the same household.</p>
+    <p>LocalShare does not guess here, on purpose. With IPv4, many internet providers put several unrelated households behind one shared address, so guessing could show your files to a stranger. Instead you link the two yourself:</p>
+    <ol>
+      <li>On each device, tap the address chip next to the device counter. One will be labelled IPv4 and the other IPv6.</li>
+      <li>On the IPv4 device, type in the IPv6 address shown on the other device and press <strong>Link</strong>.</li>
+      <li>On the IPv6 device, a request appears. Press <strong>Allow</strong>.</li>
+    </ol>
+    <p>The link covers only that one device and expires after an hour.</p>
+
+    <h2>6. Two routers, or a mesh set up as a second network</h2>
+    <p>If a second router has been plugged into the first — a common way to extend coverage — devices connected to each may be on separate networks even though both have internet. They will still share a public address and be matched, but the direct connection can fail. Setting the second router to "access point" or "bridge" mode puts everything on one network.</p>
+
+    <h2>7. The page is stale</h2>
+    <p>A tab that has been in the background for a long time, especially on a phone, may have been suspended and lost its connection. Reload the page on both devices. The device counter should go up within a second or two.</p>
+
+    <h2>Devices see each other, but the download does not start</h2>
+    <p>If both devices are listed and a download stays at zero, the introduction worked and the direct connection did not. Causes 3, 4 and 6 above are the usual suspects, followed by firewall software on a computer that blocks incoming connections from the local network. Temporarily allowing the browser through the firewall confirms whether that is the reason.</p>
+
+    <h2>Still stuck?</h2>
+    <p>Tell us what combination of devices and browsers you are using through the <a href="/suggestions.html">feedback form</a>.</p>
+
+    <p><a href="/guides/">All guides</a></p>
+    <a href="/" class="btn-back">Open LocalShare</a>
+  </article>
+
+  <footer>
+    <nav class="page-links">
+      <a href="/">Home</a>
+      <a href="/guides/">Guides</a>
+      <a href="/about.html">About</a>
+      <a href="/faq.html">FAQ</a>
+      <a href="/suggestions.html">Feedback</a>
+      <a href="/privacy.html">Privacy</a>
+    </nav>
+    <p>&copy; 2025-2026 LocalShare.</p>
+  </footer>
+</body>
+</html>
