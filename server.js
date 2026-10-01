@@ -94,6 +94,34 @@ app.post('/deploy-webhook', express.raw({ type: 'application/json', limit: '1mb'
   child.unref();
 });
 
+// Cloudflare tells browsers to keep .css and .js files for 4 hours, while HTML
+// is always fetched fresh. After a deploy, returning visitors would therefore
+// get the new pages with the old stylesheet and script. Tagging those two URLs
+// with a hash of the file's content makes a changed file a new URL.
+const assetVersions = {};
+for (const name of ['styles.css', 'client.js']) {
+  const content = fs.readFileSync(path.join(publicPath, name));
+  assetVersions[name] = crypto.createHash('sha1').update(content).digest('hex').slice(0, 10);
+}
+
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const urlPath = req.path.endsWith('/') ? `${req.path}index.html` : req.path;
+  if (!urlPath.endsWith('.html')) return next();
+
+  const filePath = path.join(publicPath, urlPath);
+  if (!filePath.startsWith(publicPath + path.sep)) return next();
+
+  fs.readFile(filePath, 'utf8', (err, html) => {
+    if (err) return next();
+    res.set('Cache-Control', 'public, max-age=0');
+    res.type('html').send(html.replace(
+      /(href|src)="\/(styles\.css|client\.js)"/g,
+      (match, attr, name) => `${attr}="/${name}?v=${assetVersions[name]}"`
+    ));
+  });
+});
+
 // Middleware voor statische bestanden en JSON-parsing
 app.use(express.static(publicPath));
 app.use(express.json());

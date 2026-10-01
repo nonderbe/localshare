@@ -25,6 +25,7 @@ LocalShare is a browser-based peer-to-peer file sharing app. Files never touch t
 
 **`server.js`** — Express + WebSocket server:
 - Redirects apex domain, `/index.html`, and plain HTTP to the canonical `https://www.local-share.com` host/path (see indexing note below)
+- Serves the HTML pages itself (ahead of `express.static`) so it can rewrite `/styles.css` and `/client.js` to `?v=<content hash>` URLs. Cloudflare gives `.css`/`.js` a 4-hour browser cache, so without this a deploy leaves returning visitors on the old stylesheet and script for hours. Hashes are computed once at startup; images and other assets are not versioned.
 - Maintains a `Map<WebSocket, { id, sharedFiles[] }>` of connected clients
 - Handles WebSocket message types `register`, `share`, `stopSharing`, `stopSharingFile`, `shareText`, `stopSharingText`, `signal`, plus `linkRequest`, `linkRespond`, `unlink` for network linking
 - Devices only see (and can signal) each other when they share a network: same IPv4 address, or same IPv6 /64 prefix. A device that landed on IPv4 can request to join its household's IPv6 network for 1 hour; a device on that IPv6 network must approve. A link joins one IPv6 /64 to one specific device (identified by a secret per-tab token sent at `register`), never to a whole IPv4 address, since carriers share IPv4 addresses between unrelated households (CGNAT/DS-Lite). Links are held in memory only.
