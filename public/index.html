@@ -60,9 +60,14 @@
     <div class="device-status">
       <p id="deviceCount">0 devices connected</p>
       <button type="button" id="networkChip" class="network-chip" aria-expanded="false" aria-controls="networkPanel" hidden>
-        <span class="network-dot" aria-hidden="true"></span>
-        <span id="networkChipFamily" class="network-tag"></span>
-        <span id="networkChipAddress" class="network-mono"></span>
+        <span class="network-chip-lines">
+          <span class="network-chip-line">
+            <span class="network-dot" aria-hidden="true"></span>
+            <span id="networkChipFamily" class="network-tag"></span>
+            <span id="networkChipAddress" class="network-mono"></span>
+          </span>
+          <span id="networkChipCode" class="network-chip-line network-chip-code" hidden>Join code: <span id="networkChipCodeValue" class="network-mono"></span></span>
+        </span>
         <span class="network-caret" aria-hidden="true">▾</span>
       </button>
     </div>

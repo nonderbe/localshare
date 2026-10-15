@@ -149,6 +149,25 @@ button:hover {
   border-color: #6C63FF;
 }
 .network-chip .network-mono { font-size: 13px; }
+.network-chip-lines {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+.network-chip-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.network-chip-code[hidden] { display: none; }
+.network-chip-code .network-mono {
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #FFFFFF;
+}
+/* Two lines read better as a rounded bubble than as a pill. */
+.network-chip.has-code { border-radius: 16px; padding: 6px 12px; }
 .network-dot {
   width: 8px;
   height: 8px;

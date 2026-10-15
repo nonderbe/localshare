@@ -426,6 +426,9 @@ function updateNetwork(network, links, linkRequests) {
     chip.hidden = false;
     document.getElementById('networkChipFamily').textContent = network.family;
     document.getElementById('networkChipAddress').textContent = network.short;
+    document.getElementById('networkChipCode').hidden = !network.code;
+    document.getElementById('networkChipCodeValue').textContent = network.code || '';
+    chip.classList.toggle('has-code', !!network.code);
     document.getElementById('networkAddress').textContent = network.display;
     const isV4 = network.family === 'IPv4';
     document.getElementById('networkHintFromV6').hidden = isV4;
