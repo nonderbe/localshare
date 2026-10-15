@@ -318,6 +318,9 @@ wss.on('connection', (ws, req) => {
           type: 'signal',
           fromId: clientId,
           kind: data.kind,
+          // Ties the signal to one negotiation, so a late answer or ICE candidate
+          // from an abandoned download attempt isn't applied to its retry.
+          connId: typeof data.connId === 'string' && data.connId.length <= 64 ? data.connId : undefined,
           signal: data.signal,
         }));
       } else {

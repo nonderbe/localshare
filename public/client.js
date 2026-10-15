@@ -7,6 +7,7 @@ let isDownloading = false;
 let isSharing = true;
 const transfers = new Map(); // Track transfers: { fileId: { fileName, totalSize, receivedSize/sentSize, ..., progressBarId, direction } }
 const downloadQueue = [];
+let downloadCounter = 0;
 let files = [];
 
 // Connections to peers we're downloading FROM (we sent the offer).
@@ -103,20 +104,51 @@ function closeConnectionObjects(conn) {
   try { conn.pc?.close(); } catch (err) { /* already closed */ }
 }
 
-// Tear down an outgoing (we-are-downloading) connection. Safe to call multiple times /
-// from stale event handlers: only mutates the map if it still points at this exact
-// connection object, and only cleans up + requeues if this connection still owns a fileId.
-function teardownOutgoing(peerId, conn) {
+// A download that makes no progress for this long is abandoned and retried, so
+// one lost signal or a connection that never opens can't block the queue.
+const DOWNLOAD_SETUP_TIMEOUT = 15 * 1000; // until the sender announces the file
+const DOWNLOAD_STALL_TIMEOUT = 20 * 1000; // between chunks once it's flowing
+const MAX_DOWNLOAD_ATTEMPTS = 3;
+
+// Closes an outgoing connection and drops it from the map, without touching
+// its download or the queue. Safe to call repeatedly and from stale handlers:
+// the map is only changed if it still points at this exact connection.
+function detachOutgoing(peerId, conn) {
+  clearInterval(conn.watchdog);
+  conn.watchdog = null;
   closeConnectionObjects(conn);
   if (outgoingConnections.get(peerId) === conn) {
     outgoingConnections.delete(peerId);
   }
-  if (conn.fileId) {
-    cleanupTransfer(conn.fileId);
-    conn.fileId = null;
-    isDownloading = false;
-    processDownloadQueue();
+}
+
+// Tear down an outgoing (we-are-downloading) connection that failed, closed
+// or stalled. If it still owned a download, that download is retried (while
+// the file is still shared) or reported as failed, and the queue moves on.
+function teardownOutgoing(peerId, conn) {
+  detachOutgoing(peerId, conn);
+  const job = conn.job;
+  if (!job) return;
+  conn.job = null;
+  conn.fileId = null;
+  const stillShared = files.some(f => f.ownerId === job.ownerId && f.name === job.fileName);
+  if (stillShared && job.attempts < MAX_DOWNLOAD_ATTEMPTS) {
+    cleanupTransfer(job.fileId);
+    downloadQueue.unshift({ ownerId: job.ownerId, fileName: job.fileName, attempts: job.attempts });
+  } else {
+    failTransfer(job.fileId, `Couldn't download ${job.fileName}. Please try again.`);
   }
+  isDownloading = false;
+  processDownloadQueue();
+}
+
+// Leaves a failed transfer's bar up for a moment with an explanation.
+function failTransfer(fileId, message) {
+  transfers.delete(fileId);
+  const progressText = document.getElementById(`progress-${fileId}-text`);
+  if (!progressText) return;
+  progressText.textContent = message;
+  setTimeout(() => document.getElementById(`progress-${fileId}`)?.remove(), 5000);
 }
 
 // Tear down an incoming (peer-is-downloading-from-us) connection. Same safety properties.
@@ -239,6 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function handleLocalFiles(fileList) {
+    isSharing = true; // adding files after "Stop sharing" shares again
     Array.from(fileList).forEach(file => {
       sharedFilesMap.set(file.name, { file, ownerId: myId });
     });
@@ -252,9 +285,19 @@ document.addEventListener('DOMContentLoaded', () => {
 function processDownloadQueue() {
   if (isDownloading || downloadQueue.length === 0) return;
 
+  const { ownerId, fileName, attempts = 0 } = downloadQueue.shift();
+  const fileId = `${Date.now()}-${++downloadCounter}-${fileName}`; // Unique fileId
+  // A file whose owner left (or stopped sharing it) fails straight away, rather
+  // than each one waiting out the setup timeout.
+  if (!files.some(f => f.ownerId === ownerId && f.name === fileName)) {
+    createProgressBar(fileId, fileName, 'receive');
+    failTransfer(fileId, `${fileName} is no longer shared.`);
+    processDownloadQueue();
+    return;
+  }
+
   isDownloading = true;
-  const { ownerId, fileName } = downloadQueue.shift();
-  const fileId = Date.now().toString() + '-' + fileName; // Unique fileId
+  const job = { ownerId, fileName, fileId, attempts: attempts + 1 };
   transfers.set(fileId, {
     fileName,
     totalSize: 0,
@@ -265,8 +308,9 @@ function processDownloadQueue() {
     progressBarId: createProgressBar(fileId, fileName, 'receive'),
     direction: 'receive'
   });
-  updateProgress(fileId, 0, `Starting download of ${fileName}...`, 'setup');
-  requestFile(ownerId, fileName, fileId);
+  const verb = job.attempts > 1 ? `Retrying (${job.attempts}/${MAX_DOWNLOAD_ATTEMPTS})` : 'Starting';
+  updateProgress(fileId, 0, `${verb} download of ${fileName}...`, 'setup');
+  requestFile(job);
 }
 
 async function registerDevice() {
@@ -783,14 +827,15 @@ function shareFilesToNetwork() {
   }
 }
 
-function requestFile(ownerId, fileName, fileId) {
-  console.log('requestFile called - ownerId:', ownerId, 'fileName:', fileName, 'fileId:', fileId);
+function requestFile(job) {
+  const { ownerId, fileName, fileId } = job;
+  console.log('requestFile called - ownerId:', ownerId, 'fileId:', fileId, 'attempt:', job.attempts);
 
-  // Replace any stale/previous connection to this specific peer. This never touches
-  // connections to other peers, so an unrelated transfer elsewhere in the swarm is
-  // no longer collateral damage.
+  // Drop any leftover connection to this peer. Only one download runs at a time and
+  // every finished one detaches itself, so a leftover never owns a live download;
+  // detaching (rather than tearing down) keeps it from re-entering the queue.
   const stale = outgoingConnections.get(ownerId);
-  if (stale) teardownOutgoing(ownerId, stale);
+  if (stale) detachOutgoing(ownerId, stale);
 
   updateProgress(fileId, 0, `Creating WebRTC offer for ${fileName}...`, 'setup');
 
@@ -804,15 +849,35 @@ function requestFile(ownerId, fileName, fileId) {
     console.log('RTCPeerConnection created');
   } catch (error) {
     console.error('Error creating RTCPeerConnection:', error);
-    updateProgress(fileId, 0, `Failed to initialize WebRTC for ${fileName}`, 'setup');
-    cleanupTransfer(fileId);
+    failTransfer(fileId, `Failed to initialize WebRTC for ${fileName}`);
     isDownloading = false;
     processDownloadQueue();
     return;
   }
 
-  const conn = { pc, dc: null, pendingCandidates: [], fileId };
+  // connId tags every signal for this negotiation, so a late answer or ICE
+  // candidate from an earlier attempt can't be applied to this one.
+  const conn = {
+    pc,
+    dc: null,
+    pendingCandidates: [],
+    fileId,
+    job,
+    connId: newConnId(),
+    lastActivity: Date.now(),
+    receiving: false,
+  };
   outgoingConnections.set(ownerId, conn);
+
+  // Abandons the attempt (and retries it) when it stops making progress, instead of
+  // waiting forever for a peer that will never answer.
+  conn.watchdog = setInterval(() => {
+    const limit = conn.receiving ? DOWNLOAD_STALL_TIMEOUT : DOWNLOAD_SETUP_TIMEOUT;
+    if (Date.now() - conn.lastActivity > limit) {
+      console.warn('Download stalled, giving up on this attempt:', fileId);
+      teardownOutgoing(ownerId, conn);
+    }
+  }, 2000);
 
   const dc = pc.createDataChannel('fileTransfer', { binaryType: 'arraybuffer' });
   conn.dc = dc;
@@ -820,7 +885,7 @@ function requestFile(ownerId, fileName, fileId) {
 
   dc.onopen = () => {
     console.log('DataChannel opened');
-    updateProgress(fileId, 0, `Connection established for ${fileName}`, 'setup');
+    conn.lastActivity = Date.now();
     if (dc.readyState === 'open') {
       updateProgress(fileId, 0, `Requesting ${fileName} from peer...`, 'setup');
       dc.send(JSON.stringify({ type: 'request', fileName, fileId }));
@@ -829,66 +894,61 @@ function requestFile(ownerId, fileName, fileId) {
   dc.onmessage = (e) => handleDataChannelMessage(e, conn, ownerId);
   dc.onerror = (error) => {
     console.error('DataChannel error:', error);
-    updateProgress(fileId, 0, `Data channel error for ${fileName}`, 'setup');
   };
   dc.onclose = () => {
     console.log('DataChannel closed');
-    updateProgress(fileId, 0, `Connection closed for ${fileName}`, 'setup');
     teardownOutgoing(ownerId, conn);
   };
 
   pc.onicecandidate = (e) => {
     if (e.candidate) {
-      console.log('ICE candidate found:', e.candidate.candidate);
-      ws.send(JSON.stringify({
+      sendToServer({
         type: 'signal',
         targetId: ownerId,
+        connId: conn.connId,
         signal: { candidate: e.candidate },
-      }));
-      updateProgress(fileId, 0, `Sending ICE candidates for ${fileName}...`, 'setup');
+      });
+      updateProgress(fileId, 0, `Connecting to the other device for ${fileName}...`, 'setup');
     }
   };
   pc.onconnectionstatechange = () => {
     console.log('Connection state:', pc.connectionState);
-    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-      updateProgress(fileId, 0, `Connection disconnected for ${fileName}`, 'setup');
+    if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
       teardownOutgoing(ownerId, conn);
     }
   };
   pc.oniceconnectionstatechange = () => {
     console.log('ICE connection state:', pc.iceConnectionState);
-    updateProgress(fileId, 0, `ICE connection state: ${pc.iceConnectionState} for ${fileName}`, 'setup');
-  };
-  pc.onsignalingstatechange = () => {
-    console.log('Signaling state:', pc.signalingState);
-    updateProgress(fileId, 0, `Signaling state: ${pc.signalingState} for ${fileName}`, 'setup');
   };
   pc.onicecandidateerror = (e) => {
     console.error('ICE candidate error:', e.errorText, 'URL:', e.url);
-    updateProgress(fileId, 0, `ICE candidate error for ${fileName}`, 'setup');
   };
 
   console.log('Creating offer');
   pc.createOffer()
-    .then(offer => {
-      console.log('Offer created:', offer.sdp.substring(0, 100) + '...');
-      updateProgress(fileId, 0, `Offer created for ${fileName}`, 'setup');
-      return pc.setLocalDescription(offer);
-    })
+    .then(offer => pc.setLocalDescription(offer))
     .then(() => {
       console.log('Local description set, sending offer to target:', ownerId);
-      updateProgress(fileId, 0, `Sending offer to peer for ${fileName}...`, 'setup');
-      ws.send(JSON.stringify({
+      updateProgress(fileId, 0, `Waiting for the other device to answer for ${fileName}...`, 'setup');
+      // If the server connection is down this is lost; the watchdog then retries
+      // once it's had time to reconnect, instead of burning every attempt at once.
+      sendToServer({
         type: 'signal',
         targetId: ownerId,
+        connId: conn.connId,
         signal: pc.localDescription,
-      }));
+      });
     })
     .catch(error => {
       console.error('WebRTC setup error:', error);
-      updateProgress(fileId, 0, `WebRTC setup failed for ${fileName}`, 'setup');
       teardownOutgoing(ownerId, conn);
     });
+}
+
+function newConnId() {
+  return crypto.randomUUID
+    ? crypto.randomUUID()
+    : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // Fetches one shared text item's full content P2P from its owner, kept deliberately
@@ -1122,7 +1182,9 @@ function handleSignal(data) {
       return;
     }
 
-    const conn = { pc, dc: null, pendingCandidates: [], sendFileIds: new Set() };
+    // Echo the requester's connId (absent from older clients) on every signal back.
+    const connId = typeof data.connId === 'string' ? data.connId : undefined;
+    const conn = { pc, dc: null, pendingCandidates: [], sendFileIds: new Set(), connId };
     incomingConnections.set(peerId, conn);
 
     pc.ondatachannel = (e) => {
@@ -1140,11 +1202,12 @@ function handleSignal(data) {
     };
     pc.onicecandidate = (e) => {
       if (e.candidate) {
-        ws.send(JSON.stringify({
+        sendToServer({
           type: 'signal',
           targetId: peerId,
+          connId,
           signal: { candidate: e.candidate },
-        }));
+        });
       }
     };
     pc.onconnectionstatechange = () => {
@@ -1161,11 +1224,12 @@ function handleSignal(data) {
       })
       .then(answer => pc.setLocalDescription(answer))
       .then(() => {
-        ws.send(JSON.stringify({
+        sendToServer({
           type: 'signal',
           targetId: peerId,
+          connId,
           signal: pc.localDescription,
-        }));
+        });
       })
       .catch(error => {
         console.error('Error handling offer:', error);
@@ -1174,7 +1238,9 @@ function handleSignal(data) {
 
   } else if (data.signal.type === 'answer') {
     const conn = outgoingConnections.get(peerId);
-    if (!conn) return;
+    // An answer to an attempt we've since abandoned must not be applied to its replacement.
+    if (!conn || (data.connId && data.connId !== conn.connId)) return;
+    if (conn.pc.signalingState !== 'have-local-offer') return;
     conn.pc.setRemoteDescription(new RTCSessionDescription(data.signal))
       .then(() => {
         conn.pendingCandidates.forEach(candidate => conn.pc.addIceCandidate(new RTCIceCandidate(candidate)));
@@ -1184,11 +1250,14 @@ function handleSignal(data) {
 
   } else if (data.signal.candidate) {
     // A candidate could belong to either an outgoing or incoming negotiation with this
-    // peer; in the (common) case only one exists. If both exist at once -- this peer is
-    // simultaneously downloading from us AND we're downloading from them -- candidates
-    // may be misrouted between the two; that narrow case can cause one of the two
-    // transfers to fail ICE and retry, but no longer corrupts unrelated peers' transfers.
-    const conn = outgoingConnections.get(peerId) || incomingConnections.get(peerId);
+    // peer. The connId picks the right one, and drops candidates for an attempt that's
+    // already gone. Older clients send no connId; their candidates go to the connection
+    // negotiated without one (an incoming connection they requested), else whichever exists.
+    const out = outgoingConnections.get(peerId);
+    const inc = incomingConnections.get(peerId);
+    const conn = data.connId
+      ? [out, inc].find(c => c && c.connId === data.connId)
+      : [out, inc].find(c => c && !c.connId) || out || inc;
     if (!conn) return;
     if (conn.pc.remoteDescription) {
       conn.pc.addIceCandidate(new RTCIceCandidate(data.signal.candidate))
@@ -1205,8 +1274,16 @@ function handleDataChannelMessage(e, conn, peerId) {
     console.log('Received message:', message);
     if (message.type === 'request') {
       const file = sharedFilesMap.get(message.fileName)?.file;
-      if (file) sendFileWithProgress(file, message.fileId, conn);
+      if (file && isSharing) {
+        sendFileWithProgress(file, message.fileId, conn);
+      } else if (conn.dc?.readyState === 'open') {
+        // Say so, rather than leaving the requester waiting for bytes that never come.
+        conn.dc.send(JSON.stringify({ type: 'stop', fileId: message.fileId, fileName: message.fileName }));
+      }
     } else if (message.type === 'fileSize') {
+      if (message.fileId !== conn.fileId) return;
+      conn.receiving = true;
+      conn.lastActivity = Date.now();
       const fileId = message.fileId;
       let existing = transfers.get(fileId);
       if (!existing) {
@@ -1227,22 +1304,24 @@ function handleDataChannelMessage(e, conn, peerId) {
       console.log(`Set totalSize for ${fileId} to ${message.size} bytes`);
       updateProgress(fileId, 0, `Receiving ${message.fileName} (0.00 KB of ${(message.size / 1024).toFixed(2)} KB)...`, 'receive');
     } else if (message.type === 'end') {
+      if (message.fileId !== conn.fileId) return;
       console.log('Received end message, finalizing download');
-      receiveFileWithProgress(message.fileId); // may synchronously start the next queued download
+      // Detach this connection before finalizing: finalizing starts the next queued
+      // download, which must find neither this connection nor its download still
+      // registered (that used to start two downloads at once, one of which hung).
       conn.fileId = null;
-      closeConnectionObjects(conn);
-      if (outgoingConnections.get(peerId) === conn) {
-        outgoingConnections.delete(peerId);
-      }
+      conn.job = null;
+      detachOutgoing(peerId, conn);
+      receiveFileWithProgress(message.fileId);
     } else if (message.type === 'stop') {
-      console.log(`Received stop message for fileId: ${message.fileId}`);
-      cleanupTransfer(message.fileId);
-      console.log(`Transfer of ${message.fileName || 'file'} stopped by sender`);
-      if (conn.fileId === message.fileId) {
-        conn.fileId = null;
-        isDownloading = false;
-        processDownloadQueue();
-      }
+      if (message.fileId !== conn.fileId) return;
+      console.log('Transfer stopped by sender:', message.fileId);
+      conn.fileId = null;
+      conn.job = null;
+      detachOutgoing(peerId, conn);
+      failTransfer(message.fileId, `${message.fileName || 'The file'} is no longer shared.`);
+      isDownloading = false;
+      processDownloadQueue();
     }
   } else {
     // Routed via this specific connection's current fileId -- not a global search over
@@ -1251,6 +1330,7 @@ function handleDataChannelMessage(e, conn, peerId) {
     const fileId = conn.fileId;
     const transfer = fileId ? transfers.get(fileId) : undefined;
     if (transfer) {
+      conn.lastActivity = Date.now();
       let byteLength = 0;
       if (e.data instanceof ArrayBuffer && e.data.byteLength > 0) {
         byteLength = e.data.byteLength;
@@ -1365,7 +1445,7 @@ function receiveFileWithProgress(fileId) {
   const transfer = transfers.get(fileId);
   if (!transfer || transfer.receivedSize === 0) {
     console.warn(`No valid chunks for ${fileId}, skipping download`);
-    transfers.delete(fileId);
+    cleanupTransfer(fileId);
     isDownloading = false;
     processDownloadQueue();
     return;
