@@ -7,7 +7,7 @@ const { spawn } = require('child_process');
 const nodemailer = require('nodemailer');
 const stats = require('./stats');
 const diskAlert = require('./disk-alert');
-const { parseNetwork, describeNetwork, createLinkStore } = require('./network');
+const { parseNetwork, describeNetwork, createLinkStore, normalizeCode, createCodeStore } = require('./network');
 
 const app = express();
 const port = process.env.PORT || 10000;
@@ -142,6 +142,12 @@ const LINK_REQUESTS_PER_MINUTE_PER_DEVICE = 5;
 const LINK_REQUESTS_PER_MINUTE_PER_NETWORK = 20;
 const LINK_PRUNE_INTERVAL = 15 * 1000;
 const LINK_TOKEN_PATTERN = /^[A-Za-z0-9-]{16,64}$/;
+const JOIN_CODE_RELEASE_AFTER = 10 * 60 * 1000;
+// Wrong codes get much less allowance than requests in general, so guessing
+// codes to reach random households is slow even from many addresses at once.
+const JOIN_CODE_MISSES_PER_MINUTE_PER_DEVICE = 3;
+const JOIN_CODE_MISSES_PER_MINUTE_PER_NETWORK = 6;
+const JOIN_CODE_MISSES_PER_MINUTE_GLOBAL = 120;
 
 // Links let a device that landed on IPv4 see its household's IPv6 devices
 // anyway. See network.js for why a link targets one device, not an IPv4
@@ -155,20 +161,31 @@ const linkStore = createLinkStore({
   maxRequests: 10000,
 });
 
+// IPv6 networks are named by a short join code when linking. See network.js.
+const codeStore = createCodeStore({ releaseAfter: JOIN_CODE_RELEASE_AFTER });
+
 // Rate limits for link requests: per device (so neighbours sharing an IPv4
 // address can't use up each other's allowance) and a looser one per source
 // network (so minting new device tokens doesn't buy unlimited requests).
 const recentLinkRequests = new Map(); // 'device:<token>' or 'network:<key>' -> [timestamps]
 
+function hasRoom(limits, now) {
+  return limits.every(([key, limit]) =>
+    (recentLinkRequests.get(key) || []).filter(t => t > now - 60 * 1000).length < limit);
+}
+
+function recordAttempt(limits, now) {
+  limits.forEach(([key]) => {
+    const recent = (recentLinkRequests.get(key) || []).filter(t => t > now - 60 * 1000);
+    recentLinkRequests.set(key, [...recent, now]);
+  });
+}
+
 // Counts a request against every bucket, but only if all of them have room,
 // so a refusal doesn't use up allowance in the others.
 function allowLinkRequest(limits, now) {
-  const buckets = limits.map(([key, limit]) => {
-    const recent = (recentLinkRequests.get(key) || []).filter(t => t > now - 60 * 1000);
-    return { key, limit, recent };
-  });
-  if (buckets.some(({ recent, limit }) => recent.length >= limit)) return false;
-  buckets.forEach(({ key, recent }) => recentLinkRequests.set(key, [...recent, now]));
+  if (!hasRoom(limits, now)) return false;
+  recordAttempt(limits, now);
   return true;
 }
 
@@ -211,7 +228,7 @@ wss.on('connection', (ws, req) => {
     const data = JSON.parse(message);
     if (!data || typeof data.type !== 'string') return;
     // Log only the message type, never its contents: those include file
-    // names, IP addresses (in WebRTC signals), typed-in link addresses and
+    // names, IP addresses (in WebRTC signals), typed-in join codes and
     // link tokens.
     console.log('Received', data.type.slice(0, 40), 'from', clientId);
     if (data.type === 'register') {
@@ -315,6 +332,9 @@ wss.on('connection', (ws, req) => {
       if (!request) return;
       if (data.allow === true) {
         linkStore.addLink(request.toKey, request.deviceToken, request.fromKey, now);
+        // A code that has been used gets replaced, so anyone else who saw or
+        // guessed it can't keep using it.
+        codeStore.rotate(request.toKey);
         console.log('Device link approved by', clientId);
       }
       broadcastUpdate();
@@ -334,17 +354,14 @@ wss.on('connection', (ws, req) => {
       return sendLinkStatus(ws, 'error', "Linking isn't available on this connection. Try reloading the page.");
     }
     if (clientNetwork.family !== 'IPv4') {
-      return sendLinkStatus(ws, 'error', 'Enter your address on the other device instead.');
+      return sendLinkStatus(ws, 'error', 'Enter the code on the other device instead.');
     }
-    const target = typeof data.address === 'string' && data.address.length <= 100
-      ? parseNetwork(data.address)
-      : null;
-    if (!target) {
-      return sendLinkStatus(ws, 'error', "That doesn't look like an IPv6 address.");
+    const code = normalizeCode(data.code);
+    if (!code) {
+      return sendLinkStatus(ws, 'error', 'Enter the 4-character code shown on the other device.');
     }
-    if (target.family !== 'IPv6') {
-      return sendLinkStatus(ws, 'error', 'Enter the IPv6 address shown on the other device.');
-    }
+    // Counted before the code is looked up, so every guess at a code uses up
+    // allowance.
     const now = Date.now();
     if (!allowLinkRequest([
       [`device:${clientInfo.linkToken}`, LINK_REQUESTS_PER_MINUTE_PER_DEVICE],
@@ -352,6 +369,20 @@ wss.on('connection', (ws, req) => {
     ], now)) {
       return sendLinkStatus(ws, 'error', 'Too many requests. Please wait a minute and try again.');
     }
+    const missLimits = [
+      [`miss-device:${clientInfo.linkToken}`, JOIN_CODE_MISSES_PER_MINUTE_PER_DEVICE],
+      [`miss-network:${clientNetwork.key}`, JOIN_CODE_MISSES_PER_MINUTE_PER_NETWORK],
+      ['miss-global', JOIN_CODE_MISSES_PER_MINUTE_GLOBAL],
+    ];
+    if (!hasRoom(missLimits, now)) {
+      return sendLinkStatus(ws, 'error', 'Too many wrong codes. Please wait a minute and try again.');
+    }
+    const targetKey = codeStore.networkFor(code);
+    if (!targetKey) {
+      recordAttempt(missLimits, now);
+      return sendLinkStatus(ws, 'error', "That code doesn't match a network right now. Check the code on the other device.");
+    }
+    const target = { key: targetKey };
     if (linkStore.isLinked(target.key, clientInfo.linkToken, clientNetwork.key, now)) {
       return sendLinkStatus(ws, 'error', 'Already linked with that network.');
     }
@@ -362,9 +393,9 @@ wss.on('connection', (ws, req) => {
     if (result === 'full') {
       return sendLinkStatus(ws, 'error', 'Linking is busy right now. Please try again later.');
     }
-    // Same reply whether or not anyone is at that address, so the feature
-    // can't be used to probe which addresses have LocalShare open.
-    sendLinkStatus(ws, 'sent', describeNetwork(target.key).display, LINK_REQUEST_TTL);
+    // Echo the code, not the network: the requester only learns the other
+    // network's address once a device there approves.
+    sendLinkStatus(ws, 'sent', code, LINK_REQUEST_TTL);
     // Only devices on the target network need to hear about a new request.
     broadcastUpdate(recipient => recipient.networkKey === target.key);
   }
@@ -403,6 +434,9 @@ setInterval(() => {
   recentLinkRequests.forEach((timestamps, key) => {
     if (timestamps.every(t => t <= now - 60 * 1000)) recentLinkRequests.delete(key);
   });
+  codeStore.prune(new Set([...clients.values()]
+    .filter(client => client.networkFamily === 'IPv6')
+    .map(client => client.networkKey)), now);
   if (linkStore.prune(now)) broadcastUpdate();
 }, LINK_PRUNE_INTERVAL);
 
@@ -448,6 +482,10 @@ function broadcastUpdate(shouldSend = () => true) {
     // another network doesn't see its link, since it no longer applies there.
     const key = recipient.networkKey;
     const network = key ? describeNetwork(key) : null;
+    // Only IPv6 networks can be joined, so only they get a code.
+    if (network && recipient.networkFamily === 'IPv6') {
+      network.code = codeStore.codeFor(key, now);
+    }
     const links = linkStore.linksFor(key, recipient.linkToken, now)
       .filter(link => link.networkKey === key || link.deviceKey === key)
       .map(link => ({

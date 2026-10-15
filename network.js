@@ -180,4 +180,82 @@ function createLinkStore({ linkTtl, requestTtl, maxRequestsPerTarget, maxRequest
   };
 }
 
-module.exports = { parseNetwork, describeNetwork, createLinkStore };
+// Short join codes stand in for an IPv6 network's address when linking, since
+// nobody wants to type an IPv6 address on a phone. Each IPv6 network with a
+// device online gets a random code; it stays the same while devices come and
+// go, is replaced once a link made with it is approved, and is released
+// `releaseAfter` after the last device leaves. A code only
+// lets someone *ask* to join: a device on the network still has to approve,
+// and the code is never shown to anyone off the network.
+// The alphabet leaves out 0/O and 1/I/L, which are easy to mix up when read
+// off another screen.
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const CODE_LENGTH = 4;
+
+// Uppercases and strips spaces/dashes from a typed-in code; returns null if
+// what's left can't be a code.
+function normalizeCode(raw) {
+  if (typeof raw !== 'string' || raw.length > 20) return null;
+  const code = raw.toUpperCase().replace(/[\s-]/g, '');
+  if (code.length !== CODE_LENGTH) return null;
+  return [...code].every(c => CODE_ALPHABET.includes(c)) ? code : null;
+}
+
+function createCodeStore({ releaseAfter, randomInt = crypto.randomInt }) {
+  const byKey = new Map(); // networkKey -> { code, lastSeen }
+  const byCode = new Map(); // code -> networkKey
+
+  const generate = () => {
+    // 31^4 is ~920k codes, far more than will ever be live at once, so a
+    // free one turns up within a few tries.
+    for (let attempt = 0; attempt < 100; attempt++) {
+      let code = '';
+      for (let i = 0; i < CODE_LENGTH; i++) code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
+      if (!byCode.has(code)) return code;
+    }
+    return null;
+  };
+
+  return {
+    // The code for a network, assigning one if needed (null if none is free).
+    codeFor(networkKey, now) {
+      const entry = byKey.get(networkKey);
+      if (entry) {
+        entry.lastSeen = now;
+        return entry.code;
+      }
+      const code = generate();
+      if (!code) return null;
+      byKey.set(networkKey, { code, lastSeen: now });
+      byCode.set(code, networkKey);
+      return code;
+    },
+
+    networkFor(code) {
+      return byCode.get(code) || null;
+    },
+
+    // Drops a network's code; it gets a fresh one the next time it's asked for.
+    rotate(networkKey) {
+      const entry = byKey.get(networkKey);
+      if (!entry) return;
+      byKey.delete(networkKey);
+      byCode.delete(entry.code);
+    },
+
+    // Keeps the codes of networks that still have devices online and releases
+    // the rest once they've been empty for `releaseAfter`.
+    prune(activeKeys, now) {
+      byKey.forEach((entry, key) => {
+        if (activeKeys.has(key)) {
+          entry.lastSeen = now;
+        } else if (now - entry.lastSeen > releaseAfter) {
+          byKey.delete(key);
+          byCode.delete(entry.code);
+        }
+      });
+    },
+  };
+}
+
+module.exports = { parseNetwork, describeNetwork, createLinkStore, normalizeCode, createCodeStore };

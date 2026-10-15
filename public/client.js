@@ -345,7 +345,7 @@ function updateDeviceCount(count) {
 // this device is grouped by. A device on IPv4 can ask to join an IPv6
 // network, which a device on that network has to approve. See network.js.
 let linkDeadlines = []; // [{ id, display, deadline }] for the countdown
-let pendingLink = null; // { display, deadline } while a request awaits approval
+let pendingLink = null; // { code, deadline } while a request awaits approval
 let shownRequestIds = '';
 
 // Random per-tab secret identifying this device in a link. It survives a
@@ -387,14 +387,19 @@ function updateNetwork(network, links, linkRequests) {
     document.getElementById('networkHintFromV6').hidden = isV4;
     document.getElementById('networkHintFromV4').hidden = !isV4;
     document.getElementById('networkLinkSection').hidden = !isV4;
+    document.getElementById('networkCodeSection').hidden = !network.code;
+    document.getElementById('networkCode').textContent = network.code || '';
   }
 
   const now = Date.now();
-  linkDeadlines = links.map(link => ({ id: link.id, display: link.display, deadline: now + link.expiresIn }));
-  if (pendingLink && links.some(link => link.display === pendingLink.display)) {
+  // The requester isn't told which network a code belongs to, so a request
+  // counts as answered once a link turns up that wasn't there before.
+  const knownIds = new Set(linkDeadlines.map(link => link.id));
+  if (pendingLink && links.some(link => !knownIds.has(link.id))) {
     pendingLink = null;
     setLinkStatus('');
   }
+  linkDeadlines = links.map(link => ({ id: link.id, display: link.display, deadline: now + link.expiresIn }));
   renderNetworkLinks();
   renderLinkRequests(linkRequests);
 }
@@ -405,7 +410,7 @@ function renderNetworkLinks() {
   const now = Date.now();
   if (pendingLink && pendingLink.deadline <= now) {
     pendingLink = null;
-    setLinkStatus('No answer in time. Check the address and try again.', true);
+    setLinkStatus('No answer in time. Check the code and try again.', true);
   }
 
   const container = document.getElementById('networkLinks');
@@ -483,9 +488,9 @@ function renderLinkRequests(linkRequests) {
 
 function handleLinkStatus(data) {
   if (data.status === 'sent') {
-    pendingLink = { display: data.message, deadline: Date.now() + data.expiresIn };
+    pendingLink = { code: data.message, deadline: Date.now() + data.expiresIn };
     document.getElementById('networkLinkInput').value = '';
-    setLinkStatus(`Request sent to ${data.message}. Tap Allow on the other device within 2 minutes.`);
+    setLinkStatus(`Request sent with code ${data.message}. Tap Allow on the other device within 2 minutes.`);
   } else {
     pendingLink = null;
     setLinkStatus(data.message, true);
@@ -533,22 +538,11 @@ document.addEventListener('DOMContentLoaded', () => {
     whyToggle.setAttribute('aria-expanded', String(!why.hidden));
   });
 
-  const copyButton = document.getElementById('networkCopy');
-  copyButton.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(document.getElementById('networkAddress').textContent);
-      copyButton.textContent = 'Copied';
-    } catch (err) {
-      copyButton.textContent = 'Copy failed';
-    }
-    setTimeout(() => { copyButton.textContent = 'Copy'; }, 1500);
-  });
-
   document.getElementById('networkLinkForm').addEventListener('submit', (e) => {
     e.preventDefault();
-    const address = document.getElementById('networkLinkInput').value.trim();
-    if (!address) return;
-    if (!sendToServer({ type: 'linkRequest', address })) {
+    const code = document.getElementById('networkLinkInput').value.trim().toUpperCase();
+    if (!code) return;
+    if (!sendToServer({ type: 'linkRequest', code })) {
       setLinkStatus('Not connected right now. Please try again in a moment.', true);
     }
   });

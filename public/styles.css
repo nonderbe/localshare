@@ -213,6 +213,16 @@ button:hover {
   font-size: 16px; /* 16px keeps iOS Safari from zooming in on focus */
 }
 .network-input::placeholder { color: rgba(224, 224, 224, 0.45); }
+.network-code-input { text-transform: uppercase; letter-spacing: 0.15em; }
+.network-code-input::placeholder { text-transform: none; letter-spacing: normal; }
+.network-code-section { margin: 12px 0 4px; }
+.network-code {
+  margin-top: 4px;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  color: #FFFFFF;
+}
 .network-btn {
   padding: 8px 16px;
   border-radius: 10px;
