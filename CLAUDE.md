@@ -58,6 +58,15 @@ LocalShare is a browser-based peer-to-peer file sharing app. Files never touch t
 
 **Tesla third-party app public key** (`/.well-known/appspecific/com.tesla.3p.public-key.pem`) is no longer served by this app. It's now served directly on the home server by a standalone script, `tesla-pem.py`, listening on port 10001 — separate from this Express app's port 10000. This repo's `.wellknown/appspecific/com.tesla.3p.public-key.pem` and `public/.wellknown/appspecific/com.tesla.3p.public-key.pem` files are stale leftovers from the old in-app-serving approach and are no longer what's actually live.
 
+## Join codes: accepted security risks
+
+The join code is deliberately 4 characters (owner's choice, for ease of typing), from a 31-character alphabet: about 923k codes. Two automated security reviews (2026-10-15) flagged the consequences below; the owner reviewed them and **accepted both risks**. Don't "fix" them by changing the code length or limits without asking.
+
+- **Codes can be guessed.** Unlike an IPv6 /64, a 4-character code can be brute-forced. A hit lets a stranger put a join request banner (showing their IPv4 address) on a random household's screen, and could crowd out that household's own request (at most 5 pending per network, oldest evicted). It can't be aimed at a chosen household, and nothing is shared unless someone there taps Allow. Mitigations in `server.js`/`network.js`: every attempt counts against the general link-request limits (5/min per device, 20/min per IPv4 network) before the lookup; wrong codes have their own stricter limits (3/min per device, 6/min per IPv4 network, 120/min server-wide); a code is replaced as soon as a link made with it is approved; the requester only learns the target network's address after approval.
+- **The server-wide wrong-code limit can be used to block linking.** With about 20 IPv4 addresses an attacker can keep the 120/min global bucket full, and then everyone gets "Too many wrong codes", even with a correct code. Nothing leaks; linking is just unavailable while it lasts. The limit is checked before the lookup on purpose: checking only after a miss would let a guesser over the limit still learn which codes exist.
+
+The alternative that was considered and declined: 6-character codes (shown as `ABC-DEF`, which `normalizeCode` already accepts), which would make guessing impractical and allow dropping the server-wide limit.
+
 ## Environment Variables
 
 | Variable | Purpose |
